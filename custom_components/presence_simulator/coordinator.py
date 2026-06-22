@@ -148,7 +148,8 @@ class PresenceCoordinator:
             self.hass, self._async_sample, timedelta(minutes=SAMPLE_MINUTES)
         )
         # Take one sample immediately so the model starts filling in.
-        self.hass.async_create_task(self._async_sample(dt_util.now()))
+        # _async_sample is a synchronous @callback, so call it directly.
+        self._async_sample(dt_util.now())
 
     async def async_stop(self) -> None:
         await self.async_set_away(False)
