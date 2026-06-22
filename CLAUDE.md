@@ -66,8 +66,9 @@ The data flow is **learn → store → simulate**, with `coordinator.py` as the 
 
 ## Open decisions / not yet done
 
-- User was advised to enable GitHub **Settings → Emails → "Keep my email address private" + "Block command line pushes that expose my email"** — not confirmed done.
 - Submitting to the **HACS default store** (would require adding the domain to home-assistant/brands and a PR to HACS) — not done; custom-repo install works in the meantime.
+
+GitHub "Block command line pushes that expose my email" is **enabled**, so always commit with the noreply email (`42879532+jamesecc@users.noreply.github.com`) or pushes will be rejected.
 
 ## Releases
 
