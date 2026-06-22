@@ -52,11 +52,11 @@ The data flow is **learn → store → simulate**, with `coordinator.py` as the 
 ## Repository & distribution status
 
 - **Remote:** `git@github.com:jamesecc/ha-presence-sim.git`, branch `main`. Push over **SSH** (the key works); do **not** rely on `gh` — see environment quirk below.
-- **Visibility: PRIVATE.** Consequence: HACS can't install it via the normal flow — a GitHub PAT must be configured in HACS for private custom repos. README documents both HACS and manual install.
+- **Visibility: PUBLIC.** HACS custom-repo install works without a PAT. README documents both HACS and manual install.
 - **Commit identity:** author/commit with `jamesecc <42879532+jamesecc@users.noreply.github.com>` (GitHub noreply). The original commits used the real iCloud email and were rewritten + force-pushed to scrub it. Keep using the noreply email for all future commits via `git -c user.name=... -c user.email=...`.
 - **Packaging:** `hacs.json` lives at the **repo root** (HACS reads it there). The canonical README is at the repo root (HACS renders the root README); the in-folder `custom_components/.../README.md` is just a pointer to avoid drift.
 - **License:** MIT (`LICENSE`, © 2026 jamesecc) — chosen as the HACS/HA-custom-integration norm; Apache 2.0 was the considered alternative (declined as heavier than needed).
-- **CI:** `.github/workflows/validate.yml` runs on push/PR/weekly-cron with two jobs — `hassfest` (HA manifest/structure validation, Docker action) and `syntax` (py_compile + JSON validation). The weekly cron exists to catch HA releases that invalidate the manifest without a push.
+- **CI:** `.github/workflows/validate.yml` runs on push/PR/weekly-cron with three jobs — `hassfest` (HA manifest/structure validation, Docker action), `hacs` (HACS validation, `category: integration`, `ignore: brands` since the domain isn't in home-assistant/brands), and `syntax` (py_compile + JSON validation). The weekly cron exists to catch HA releases that invalidate the manifest without a push.
 
 ## Corrections already applied (don't reintroduce)
 
@@ -66,13 +66,12 @@ The data flow is **learn → store → simulate**, with `coordinator.py` as the 
 
 ## Open decisions / not yet done
 
-- Whether to make the repo **public** (would enable frictionless HACS install and justify adding the `hacs/action` HACS-validation CI job — deliberately omitted while private). Audited clean for secrets/PII before this decision.
 - User was advised to enable GitHub **Settings → Emails → "Keep my email address private" + "Block command line pushes that expose my email"** — not confirmed done.
-- `documentation`/`issue_tracker` URLs point at the (currently private) repo, so they won't resolve publicly until visibility changes.
+- Submitting to the **HACS default store** (would require adding the domain to home-assistant/brands and a PR to HACS) — not done; custom-repo install works in the meantime.
 
 ## Releases
 
-- First release **`v0.0.1`** cut as an annotated tag (pushed). `manifest.json` `version` is kept **in sync with the tag** — bump both together (HACS uses the tag as the installed version and also reads the manifest version).
+- Repo is **public** and **`v0.0.1`** is published as a GitHub Release (annotated tag). `manifest.json` `version` is kept **in sync with the tag** — bump both together (HACS uses the tag as the installed version and also reads the manifest version).
 
 ## Environment
 
