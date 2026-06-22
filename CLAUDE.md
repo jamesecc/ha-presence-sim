@@ -51,7 +51,7 @@ The data flow is **learn → store → simulate**, with `coordinator.py` as the 
 
 ## Repository & distribution status
 
-- **Remote:** `git@github.com:jamesecc/ha-presence-sim.git`, branch `main`. Push over **SSH** (the key works); do **not** rely on `gh` — see environment quirk below.
+- **Remote:** `git@github.com:jamesecc/ha-presence-sim.git`, branch `main`. Push over **SSH** (the key works). `gh` is now authenticated (see environment note) and usable for releases/API.
 - **Visibility: PUBLIC.** HACS custom-repo install works without a PAT. README documents both HACS and manual install.
 - **Commit identity:** author/commit with `jamesecc <42879532+jamesecc@users.noreply.github.com>` (GitHub noreply). The original commits used the real iCloud email and were rewritten + force-pushed to scrub it. Keep using the noreply email for all future commits via `git -c user.name=... -c user.email=...`.
 - **Packaging:** `hacs.json` lives at the **repo root** (HACS reads it there). The canonical README is at the repo root (HACS renders the root README); the in-folder `custom_components/.../README.md` is just a pointer to avoid drift.
@@ -72,8 +72,10 @@ GitHub "Block command line pushes that expose my email" is **enabled**, so alway
 
 ## Releases
 
-- Repo is **public** and **`v0.0.1`** is published as a GitHub Release (annotated tag). `manifest.json` `version` is kept **in sync with the tag** — bump both together (HACS uses the tag as the installed version and also reads the manifest version).
+- Repo is **public** and the latest release is **`v0.0.2`**, published as a GitHub Release (annotated tag). `manifest.json` `version` is kept **in sync with the tag** — bump both together (HACS uses the tag as the installed version and also reads the manifest version).
+- Release flow used: bump `manifest.json` version + commit, push `main`, `git tag -a vX.Y.Z`, push the tag, then `gh release create vX.Y.Z`.
+- `v0.0.2` fixed a setup crash where the immediate startup sample wrapped the synchronous `_async_sample` `@callback` in `hass.async_create_task` (`TypeError: a coroutine was expected, got None`); it's now called directly.
 
 ## Environment
 
-`~/.config` was previously owned by **root** (mode 700), which broke `gh` and made `git` print `Permission denied` warnings. **Fixed** by the user with `sudo chown -R "$(id -un)":staff ~/.config` — git is now clean and `gh` can read its config (still unauthenticated; run `gh auth login` if you want to use it, but SSH already works for all GitHub operations).
+`~/.config` was previously owned by **root** (mode 700), which broke `gh` and made `git` print `Permission denied` warnings. **Fixed** by the user with `sudo chown -R "$(id -un)":staff ~/.config` — git is now clean. `gh` is now **authenticated** as `jamesecc` (git protocol SSH) and works for releases/API; SSH also works for all GitHub operations.
