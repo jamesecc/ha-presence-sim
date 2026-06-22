@@ -68,9 +68,12 @@ The data flow is **learn → store → simulate**, with `coordinator.py` as the 
 
 - Whether to make the repo **public** (would enable frictionless HACS install and justify adding the `hacs/action` HACS-validation CI job — deliberately omitted while private). Audited clean for secrets/PII before this decision.
 - User was advised to enable GitHub **Settings → Emails → "Keep my email address private" + "Block command line pushes that expose my email"** — not confirmed done.
-- No **release tag** cut yet; `manifest.json` `version` is `1.0.0`. HACS prefers tagged releases.
 - `documentation`/`issue_tracker` URLs point at the (currently private) repo, so they won't resolve publicly until visibility changes.
 
-## Environment quirk (this machine)
+## Releases
 
-`~/.config` is owned by **root** (mode 700), so `git` prints `Permission denied` warnings for `~/.config/git/*` (harmless — filter with `grep -v "Permission denied"`) and **`gh` cannot read/write its config and is unusable**. `gh` is installed via brew but unauthenticated. Use SSH for all GitHub operations. A clean fix the user can run is `sudo chown -R "$(id -un)":staff ~/.config` (not done — needs their sudo).
+- First release **`v0.0.1`** cut as an annotated tag (pushed). `manifest.json` `version` is kept **in sync with the tag** — bump both together (HACS uses the tag as the installed version and also reads the manifest version).
+
+## Environment
+
+`~/.config` was previously owned by **root** (mode 700), which broke `gh` and made `git` print `Permission denied` warnings. **Fixed** by the user with `sudo chown -R "$(id -un)":staff ~/.config` — git is now clean and `gh` can read its config (still unauthenticated; run `gh auth login` if you want to use it, but SSH already works for all GitHub operations).
