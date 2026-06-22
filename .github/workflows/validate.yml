@@ -16,6 +16,18 @@ jobs:
       - uses: actions/checkout@v5
       - uses: home-assistant/actions/hassfest@master
 
+  hacs:
+    name: HACS validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hacs/action@main
+        with:
+          category: integration
+          # "brands" only passes once the domain is added to home-assistant/brands
+          # (relevant for the HACS default store, not custom-repo installs).
+          ignore: brands
+
   syntax:
     name: Python syntax & JSON
     runs-on: ubuntu-latest
