@@ -1,0 +1,71 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Presence Simulator",
+        "description": "Choose which entities to learn from and which to control while away.",
+        "data": {
+          "monitored_entities": "Entities to monitor (learn patterns from)",
+          "controlled_entities": "Entities to control in away mode"
+        },
+        "data_description": {
+          "monitored_entities": "Lights, switches, power/energy sensors, media players, etc. Their on/off and activity patterns over time are learned.",
+          "controlled_entities": "Lights and switches the simulator will turn on and off to mimic someone being home."
+        }
+      },
+      "tuning": {
+        "title": "Behaviour tuning",
+        "description": "Defaults are sensible; adjust if you want more or less variation.",
+        "data": {
+          "slot_minutes": "Schedule resolution (minutes per time slot)",
+          "randomness": "Randomness (chance of deviating from learned pattern)",
+          "min_dwell_minutes": "Minimum time before an entity changes state again",
+          "jitter_minutes": "Random timing jitter within a slot",
+          "max_concurrent_fraction": "Max fraction of controlled entities on at once",
+          "power_threshold": "Power sensor 'active' threshold (W)",
+          "quiet_start": "Quiet hours start (mostly off)",
+          "quiet_end": "Quiet hours end"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Entities",
+        "description": "Update which entities are monitored and controlled.",
+        "data": {
+          "monitored_entities": "Entities to monitor (learn patterns from)",
+          "controlled_entities": "Entities to control in away mode"
+        }
+      },
+      "tuning": {
+        "title": "Behaviour tuning",
+        "data": {
+          "slot_minutes": "Schedule resolution (minutes per time slot)",
+          "randomness": "Randomness (chance of deviating from learned pattern)",
+          "min_dwell_minutes": "Minimum time before an entity changes state again",
+          "jitter_minutes": "Random timing jitter within a slot",
+          "max_concurrent_fraction": "Max fraction of controlled entities on at once",
+          "power_threshold": "Power sensor 'active' threshold (W)",
+          "quiet_start": "Quiet hours start (mostly off)",
+          "quiet_end": "Quiet hours end"
+        }
+      }
+    }
+  },
+  "services": {
+    "reset_model": {
+      "name": "Reset learned model",
+      "description": "Discard all learned activity history and start learning from scratch."
+    },
+    "run_step": {
+      "name": "Run a simulation step now",
+      "description": "Immediately recompute and apply away-mode decisions for the current time slot."
+    },
+    "export_model": {
+      "name": "Export model summary",
+      "description": "Return a summary of the learned model as a service response."
+    }
+  }
+}

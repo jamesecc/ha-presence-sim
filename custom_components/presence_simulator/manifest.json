@@ -1,0 +1,12 @@
+{
+  "domain": "presence_simulator",
+  "name": "Presence Simulator",
+  "codeowners": ["@jamesecc"],
+  "config_flow": true,
+  "documentation": "https://github.com/jamesecc/ha-presence-sim",
+  "iot_class": "calculated",
+  "integration_type": "service",
+  "issue_tracker": "https://github.com/jamesecc/ha-presence-sim/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}

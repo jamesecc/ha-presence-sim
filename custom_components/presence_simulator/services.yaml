@@ -1,0 +1,40 @@
+reset_model:
+  name: Reset learned model
+  description: >-
+    Discard all learned activity history and start learning from scratch.
+  fields:
+    entry_id:
+      name: Config entry
+      description: Optional. Limit to a single Presence Simulator entry; omit to apply to all.
+      required: false
+      selector:
+        config_entry:
+          integration: presence_simulator
+
+run_step:
+  name: Run a simulation step now
+  description: >-
+    Immediately recompute and apply away-mode decisions for the current time
+    slot. Useful for testing without waiting for the next slot boundary.
+  fields:
+    entry_id:
+      name: Config entry
+      description: Optional. Limit to a single Presence Simulator entry; omit to apply to all.
+      required: false
+      selector:
+        config_entry:
+          integration: presence_simulator
+
+export_model:
+  name: Export model summary
+  description: >-
+    Return a summary of the learned model (observation count, coverage, learned
+    entities) as a service response.
+  fields:
+    entry_id:
+      name: Config entry
+      description: Optional. Limit to a single Presence Simulator entry; omit to apply to all.
+      required: false
+      selector:
+        config_entry:
+          integration: presence_simulator
