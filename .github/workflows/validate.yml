@@ -1,0 +1,38 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+  schedule:
+    # Weekly — catches Home Assistant changes that break the manifest/structure
+    # even when you haven't pushed anything.
+    - cron: "0 4 * * 1"
+
+jobs:
+  hassfest:
+    name: Home Assistant hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+
+  syntax:
+    name: Python syntax & JSON
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Byte-compile all modules
+        run: python -m py_compile custom_components/presence_simulator/*.py
+      - name: Validate JSON files
+        run: |
+          python - <<'PY'
+          import glob, json
+          files = ["hacs.json"] + glob.glob("custom_components/**/*.json", recursive=True)
+          for f in files:
+              with open(f) as fh:
+                  json.load(fh)
+              print(f"ok: {f}")
+          PY
