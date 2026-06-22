@@ -48,3 +48,29 @@ The data flow is **learn → store → simulate**, with `coordinator.py` as the 
 - The coordinator reads settings via `_opt()`, which checks `entry.options` then `entry.data`, so options-flow edits take effect on reload without touching `data`.
 - The learned model is persisted with HA's `Store`. **Changing `slot_minutes` resets the model** (`ActivityModel.from_dict` returns an empty model on slot-size mismatch) because the bucket layout changes — preserve this guard.
 - `strings.json` and `translations/en.json` are kept identical; update both when changing UI text, and keep keys in sync with the config-flow steps and `services.yaml`.
+
+## Repository & distribution status
+
+- **Remote:** `git@github.com:jamesecc/ha-presence-sim.git`, branch `main`. Push over **SSH** (the key works); do **not** rely on `gh` — see environment quirk below.
+- **Visibility: PRIVATE.** Consequence: HACS can't install it via the normal flow — a GitHub PAT must be configured in HACS for private custom repos. README documents both HACS and manual install.
+- **Commit identity:** author/commit with `jamesecc <42879532+jamesecc@users.noreply.github.com>` (GitHub noreply). The original commits used the real iCloud email and were rewritten + force-pushed to scrub it. Keep using the noreply email for all future commits via `git -c user.name=... -c user.email=...`.
+- **Packaging:** `hacs.json` lives at the **repo root** (HACS reads it there). The canonical README is at the repo root (HACS renders the root README); the in-folder `custom_components/.../README.md` is just a pointer to avoid drift.
+- **License:** MIT (`LICENSE`, © 2026 jamesecc) — chosen as the HACS/HA-custom-integration norm; Apache 2.0 was the considered alternative (declined as heavier than needed).
+- **CI:** `.github/workflows/validate.yml` runs on push/PR/weekly-cron with two jobs — `hassfest` (HA manifest/structure validation, Docker action) and `syntax` (py_compile + JSON validation). The weekly cron exists to catch HA releases that invalidate the manifest without a push.
+
+## Corrections already applied (don't reintroduce)
+
+- **`.claude/` and `__pycache__/` are git-ignored.** `.claude/settings.local.json` was accidentally staged once and amended out before the first push — it must never be tracked.
+- **`manifest.json` key order is load-bearing:** hassfest requires `domain`, `name`, then strictly alphabetical. `integration_type` must come before `iot_class`. Keep new keys alphabetised.
+- **GitHub Actions pinned to Node-24 versions:** `actions/checkout@v5`, `actions/setup-python@v6` (Node 20 was deprecated). Don't downgrade.
+
+## Open decisions / not yet done
+
+- Whether to make the repo **public** (would enable frictionless HACS install and justify adding the `hacs/action` HACS-validation CI job — deliberately omitted while private). Audited clean for secrets/PII before this decision.
+- User was advised to enable GitHub **Settings → Emails → "Keep my email address private" + "Block command line pushes that expose my email"** — not confirmed done.
+- No **release tag** cut yet; `manifest.json` `version` is `1.0.0`. HACS prefers tagged releases.
+- `documentation`/`issue_tracker` URLs point at the (currently private) repo, so they won't resolve publicly until visibility changes.
+
+## Environment quirk (this machine)
+
+`~/.config` is owned by **root** (mode 700), so `git` prints `Permission denied` warnings for `~/.config/git/*` (harmless — filter with `grep -v "Permission denied"`) and **`gh` cannot read/write its config and is unusable**. `gh` is installed via brew but unauthenticated. Use SSH for all GitHub operations. A clean fix the user can run is `sudo chown -R "$(id -un)":staff ~/.config` (not done — needs their sudo).
