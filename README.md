@@ -42,10 +42,27 @@ Then **Settings → Devices & Services → Add Integration → Presence Simulato
 
 ## Configure (all in the UI)
 
-- **Step 1 – Entities**: pick entities to *monitor* and entities to *control*.
-- **Step 2 – Behaviour**: slot size, randomness, min dwell, jitter, max
-  concurrent fraction, power threshold, and quiet hours. Sensible defaults are
-  provided. All of this is editable later via **Configure**.
+Setup is a **single page**: pick the entities to *control* while away (and
+optionally extra things to learn from), then the two *learning* settings —
+**Schedule resolution** and the **Power 'active' threshold**. Sensible defaults
+are provided. Anything you *control* is automatically learned from too, so you
+never have to list the same entity twice.
+
+The day-to-day **tuning controls** are live entities on the device page (see
+below), not wizard fields — adjust them anytime without disturbing learned data.
+Re-open **Configure** for a *"What do the tuning controls do?"* explainer page.
+
+### What each control does
+
+| Control | Where | What it does |
+| --- | --- | --- |
+| **Schedule resolution** | Configure | How finely the week is divided when learning/replaying (e.g. 30-min blocks). Smaller = more detailed, slower to learn. Changing it starts a *separate* model for the new resolution; the old one is kept and restored if you switch back. |
+| **Power 'active' threshold** | Configure | For power/energy sensors, the watts above which a device counts as "in use" while learning. |
+| **Routine variation** | Device page | How often the house breaks its learned routine. 0% = faithful replay; higher = more surprises. Default 15%. |
+| **Minimum time between changes** | Device page | Shortest time a device holds its new state before changing again; stops flicker. Default 20 min. |
+| **Switch timing jitter** | Device page | Each change is nudged by a random delay up to this many minutes, so switches don't all happen on the clock tick. Default 7 min. |
+| **Max devices on at once** | Device page | Cap on how much of the house is lit at the same time, as a share of controlled devices. Default 85%. |
+| **Quiet hours start / end** | Device page | Overnight window kept mostly dark (the odd light may still come on). |
 
 ## Entities created
 
@@ -53,6 +70,15 @@ Then **Settings → Devices & Services → Add Integration → Presence Simulato
 - `sensor.presence_simulator_learning_coverage` – % of the weekly schedule
   observed at least once (let it run ~1 week for full coverage).
 - `sensor.presence_simulator_observations` – total samples collected.
+
+Live **tuning controls** (device page → *Configuration*), changeable anytime:
+
+- `number.presence_simulator_routine_variation`
+- `number.presence_simulator_minimum_time_between_changes`
+- `number.presence_simulator_switch_timing_jitter`
+- `number.presence_simulator_max_devices_on_at_once`
+- `time.presence_simulator_quiet_hours_start`
+- `time.presence_simulator_quiet_hours_end`
 
 ## Services
 

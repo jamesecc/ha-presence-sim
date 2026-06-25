@@ -9,14 +9,18 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .const import (
+    CONF_SLOT_MINUTES,
     DATA_COORDINATOR,
+    DEFAULT_SLOT_MINUTES,
     DOMAIN,
     PLATFORMS,
     SERVICE_EXPORT_MODEL,
     SERVICE_RESET_MODEL,
     SERVICE_RUN_STEP,
+    SIGNAL_MODEL_UPDATED,
 )
 from .coordinator import PresenceCoordinator
 
@@ -59,8 +63,27 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload the entry when options change."""
-    await hass.config_entries.async_reload(entry.entry_id)
+    """Apply option changes.
+
+    Only a slot-size change needs a reload (it rebuilds the bucket layout and
+    swaps the active learned model). Everything else — entity lists, power
+    threshold, and all live tuning knobs — is read live by the coordinator, so
+    we just nudge the entities to re-render. This keeps editing a knob from
+    disrupting active learning or simulation.
+    """
+    data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if not data:
+        return
+    coordinator: PresenceCoordinator = data[DATA_COORDINATOR]
+    new_slot = int(
+        entry.options.get(
+            CONF_SLOT_MINUTES, entry.data.get(CONF_SLOT_MINUTES, DEFAULT_SLOT_MINUTES)
+        )
+    )
+    if new_slot != coordinator.model.slot_minutes:
+        await hass.config_entries.async_reload(entry.entry_id)
+        return
+    async_dispatcher_send(hass, SIGNAL_MODEL_UPDATED.format(entry_id=entry.entry_id))
 
 
 def _async_register_services(hass: HomeAssistant) -> None:

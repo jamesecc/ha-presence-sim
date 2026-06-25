@@ -45,7 +45,27 @@ ACTIVE_STATES = frozenset(
 # Runtime data key in hass.data[DOMAIN][entry_id]
 DATA_COORDINATOR = "coordinator"
 
-PLATFORMS = ["switch", "sensor"]
+PLATFORMS = ["switch", "sensor", "number", "time"]
+
+# Live tuning controls exposed as entities (Configuration block of the device).
+# Each tuple: (option key, internal default, scale, min, max, step, unit, icon).
+# `scale` converts the displayed value to the stored internal value
+# (displayed * scale = stored). Fraction knobs are shown as a percentage
+# (scale 0.01) so they read naturally; minute knobs store the shown value
+# (scale 1).
+NUMBER_TUNABLES = (
+    (CONF_RANDOMNESS, DEFAULT_RANDOMNESS, 0.01, 0, 60, 5, "%", "mdi:shuffle-variant"),
+    (CONF_MIN_DWELL_MINUTES, DEFAULT_MIN_DWELL_MINUTES, 1, 0, 120, 5, "min", "mdi:timer-sand"),
+    (CONF_JITTER_MINUTES, DEFAULT_JITTER_MINUTES, 1, 0, 30, 1, "min", "mdi:timer-cog-outline"),
+    (CONF_MAX_CONCURRENT_FRACTION, DEFAULT_MAX_CONCURRENT_FRACTION, 0.01, 10, 100, 5, "%", "mdi:lightbulb-group"),
+)
+
+# Quiet-hours controls exposed as time entities.
+# Each tuple: (option key, default "HH:MM:SS", icon).
+TIME_TUNABLES = (
+    (CONF_QUIET_START, DEFAULT_QUIET_START, "mdi:weather-night"),
+    (CONF_QUIET_END, DEFAULT_QUIET_END, "mdi:weather-sunset-up"),
+)
 
 # Services
 SERVICE_RESET_MODEL = "reset_model"
