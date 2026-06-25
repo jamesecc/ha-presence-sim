@@ -23,32 +23,23 @@
     "step": {
       "configure": {
         "title": "Entities & learning",
-        "description": "Update what's controlled and learned from, and the two learning settings. Day-to-day tuning (variation, quiet hours, timing) lives on the device page as adjustable controls.",
+        "description": "Update what's controlled and learned from, and the two learning settings below.\n\n**The day-to-day tuning controls** live on the device page (Settings → Devices & Services → Presence Simulator) and can be changed anytime — they don't affect learned data:\n\n- **Routine variation** — how often the house breaks its learned routine. 0% = faithful replay; higher = more surprises. Default 15%.\n- **Minimum time between changes** — the shortest time a device holds its new state before changing again; stops lights flickering on and off. Default 20 min.\n- **Switch timing jitter** — each change is nudged by a random delay up to this many minutes, so switches don't all happen on the clock tick. Default 7 min.\n- **Max devices on at once** — a cap on how much of the house is lit at the same time, as a share of your controlled devices. 85% = at most ~85% on together. Lower it if the whole house lighting up looks unrealistic.\n- **Quiet hours start / end** — an overnight window kept mostly dark (the odd light may still come on).\n\nFor the full explanation and everything else the integration does, see the **[README on GitHub]({readme_url})**.",
         "data": {
           "controlled_entities": "Entities to learn from and control when away simulation is enabled",
           "monitored_entities": "Extra entities to learn from (optional)",
           "slot_minutes": "Schedule resolution",
-          "power_threshold": "Power sensor 'active' threshold",
-          "view_tuning_help": "View what the tuning controls do"
+          "power_threshold": "Power sensor 'active' threshold"
         },
         "data_description": {
           "controlled_entities": "Lights and switches the simulator turns on and off while away. These are always learned from too, so you don't need to add them under 'Extra entities to learn from'.",
           "monitored_entities": "Extra things to learn from but not switch. Your controlled entities are already learned, so you don't need to list them here.",
           "slot_minutes": "How finely the week is divided. Changing it starts a separate model for the new resolution; your current model is saved and restored if you switch back.",
-          "power_threshold": "For power/energy sensors, the wattage above which a device counts as 'in use' while learning.",
-          "view_tuning_help": "Turn this on and submit to open a guide explaining the day-to-day tuning controls. Your changes above are kept, and a Back button returns you here."
+          "power_threshold": "For power/energy sensors, the wattage above which a device counts as 'in use' while learning."
         }
       },
       "slot_confirm": {
         "title": "Change schedule resolution?",
         "description": "Changing the schedule resolution switches to a separate learned model for the new resolution, so learning coverage will appear to start over.\n\nYour current model is **saved**, not deleted — switch the resolution back and it's restored automatically. Submit to continue, or go back to keep the current resolution."
-      },
-      "help": {
-        "title": "What the tuning controls do",
-        "description": "These live on the device page (Settings → Devices & Services → Presence Simulator) and can be changed anytime — they don't affect learned data.\n\n- **Routine variation** — how often the house breaks its learned routine. 0% = faithful replay; higher = more surprises. Default 15%.\n- **Minimum time between changes** — the shortest time a device holds its new state before changing again; stops lights flickering on and off. Default 20 min.\n- **Switch timing jitter** — each change is nudged by a random delay up to this many minutes, so switches don't all happen on the clock tick. Default 7 min.\n- **Max devices on at once** — a cap on how much of the house is lit at the same time, as a share of your controlled devices. 85% = at most ~85% on together. Lower it if the whole house lighting up looks unrealistic.\n- **Quiet hours start / end** — an overnight window kept mostly dark (the odd light may still come on).\n\nLearning settings (Schedule resolution, Power 'active' threshold) live on the *Entities & learning* page instead, because they change how the model is built.\n\nThis is a quick reference — for the full explanation, examples, and everything else the integration does, please read the complete **[README on GitHub]({readme_url})**.",
-        "menu_options": {
-          "configure": "← Back to entities & learning"
-        }
       }
     }
   },

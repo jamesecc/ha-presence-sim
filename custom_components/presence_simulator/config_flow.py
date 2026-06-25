@@ -56,12 +56,9 @@ CONTROL_DOMAINS = [
 ]
 
 
-# Transient options-form key: a toggle that opens the tuning-controls guide
-# instead of saving. Never persisted (popped before save).
-VIEW_HELP = "view_tuning_help"
-
-# README section with the full control reference. Passed to the guide page as a
-# description placeholder — hassfest forbids literal URLs in translation strings.
+# README section with the full control reference. Injected into the options page
+# description as a placeholder — hassfest forbids literal URLs in translation
+# strings.
 README_URL = "https://github.com/jamesecc/ha-presence-sim#what-each-control-does"
 
 
@@ -125,7 +122,7 @@ class PresenceSimulatorConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class PresenceSimulatorOptionsFlow(OptionsFlow):
-    """Edit entities/learning, or read what the tuning controls do."""
+    """Edit entities and learning settings."""
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         self._entry = config_entry
@@ -139,30 +136,25 @@ class PresenceSimulatorOptionsFlow(OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        # Land straight on the entities & learning page (no menu) — the
-        # tuning-controls guide is reachable from there via the help toggle.
         return await self.async_step_configure(user_input)
 
     async def async_step_configure(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         if user_input is not None:
-            view_help = user_input.pop(VIEW_HELP, False)
             self._data = dict(user_input)
-            if view_help:
-                # Keep the in-progress edits and open the guide; "Back"
-                # returns here with these values restored.
-                return await self.async_step_help()
             new_slot = int(user_input.get(CONF_SLOT_MINUTES, DEFAULT_SLOT_MINUTES))
             cur_slot = int(self._current().get(CONF_SLOT_MINUTES, DEFAULT_SLOT_MINUTES))
             if new_slot != cur_slot:
                 return await self.async_step_slot_confirm()
             return self._save()
-        defaults = {**self._current(), **self._data}
-        schema = _config_schema(defaults).extend(
-            {vol.Optional(VIEW_HELP, default=False): selector.BooleanSelector()}
+        # The tuning-controls reference lives in this step's description text
+        # (see strings.json); inject the README link as a placeholder.
+        return self.async_show_form(
+            step_id="configure",
+            data_schema=_config_schema(self._current()),
+            description_placeholders={"readme_url": README_URL},
         )
-        return self.async_show_form(step_id="configure", data_schema=schema)
 
     async def async_step_slot_confirm(
         self, user_input: dict[str, Any] | None = None
@@ -172,17 +164,6 @@ class PresenceSimulatorOptionsFlow(OptionsFlow):
         return self.async_show_form(
             step_id="slot_confirm",
             data_schema=vol.Schema({}),
-        )
-
-    async def async_step_help(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        # Read-only guide page: the single "configure" menu option renders as a
-        # Back button that returns to the entities & learning page.
-        return self.async_show_menu(
-            step_id="help",
-            menu_options=["configure"],
-            description_placeholders={"readme_url": README_URL},
         )
 
     def _save(self) -> ConfigFlowResult:

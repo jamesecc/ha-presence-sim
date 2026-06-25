@@ -52,9 +52,9 @@ never have to list the same entity twice.
 
 The day-to-day **tuning controls** are live entities on the device page (see
 below), not wizard fields — adjust them anytime without disturbing learned data.
-Re-opening **Configure** lands straight on the entities & learning page; turn on
-**View what the tuning controls do** there for an in-app explainer (it links back
-to this README and has a Back button).
+Re-opening **Configure** lands straight on the entities & learning page, which
+also describes what each tuning control does and links here for the full
+reference.
 
 ### What each control does
 
