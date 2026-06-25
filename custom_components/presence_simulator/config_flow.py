@@ -56,6 +56,11 @@ CONTROL_DOMAINS = [
 ]
 
 
+# Transient options-form key: a toggle that opens the tuning-controls guide
+# instead of saving. Never persisted (popped before save).
+VIEW_HELP = "view_tuning_help"
+
+
 def _entities_selector(domains: list[str]) -> selector.EntitySelector:
     return selector.EntitySelector(
         selector.EntitySelectorConfig(domain=domains, multiple=True)
@@ -66,12 +71,12 @@ def _config_schema(defaults: dict[str, Any]) -> vol.Schema:
     """The single onboarding/options page: entities + the two learning knobs."""
     return vol.Schema(
         {
-            vol.Optional(
-                CONF_MONITORED, default=defaults.get(CONF_MONITORED, [])
-            ): _entities_selector(MONITOR_DOMAINS),
             vol.Required(
                 CONF_CONTROLLED, default=defaults.get(CONF_CONTROLLED, [])
             ): _entities_selector(CONTROL_DOMAINS),
+            vol.Optional(
+                CONF_MONITORED, default=defaults.get(CONF_MONITORED, [])
+            ): _entities_selector(MONITOR_DOMAINS),
             vol.Optional(
                 CONF_SLOT_MINUTES,
                 default=defaults.get(CONF_SLOT_MINUTES, DEFAULT_SLOT_MINUTES),
@@ -130,25 +135,30 @@ class PresenceSimulatorOptionsFlow(OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        return self.async_show_menu(
-            step_id="init",
-            menu_options=["configure", "help"],
-        )
+        # Land straight on the entities & learning page (no menu) — the
+        # tuning-controls guide is reachable from there via the help toggle.
+        return await self.async_step_configure(user_input)
 
     async def async_step_configure(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         if user_input is not None:
+            view_help = user_input.pop(VIEW_HELP, False)
             self._data = dict(user_input)
+            if view_help:
+                # Keep the in-progress edits and open the guide; "Back"
+                # returns here with these values restored.
+                return await self.async_step_help()
             new_slot = int(user_input.get(CONF_SLOT_MINUTES, DEFAULT_SLOT_MINUTES))
             cur_slot = int(self._current().get(CONF_SLOT_MINUTES, DEFAULT_SLOT_MINUTES))
             if new_slot != cur_slot:
                 return await self.async_step_slot_confirm()
             return self._save()
-        return self.async_show_form(
-            step_id="configure",
-            data_schema=_config_schema(self._current()),
+        defaults = {**self._current(), **self._data}
+        schema = _config_schema(defaults).extend(
+            {vol.Optional(VIEW_HELP, default=False): selector.BooleanSelector()}
         )
+        return self.async_show_form(step_id="configure", data_schema=schema)
 
     async def async_step_slot_confirm(
         self, user_input: dict[str, Any] | None = None
@@ -163,12 +173,9 @@ class PresenceSimulatorOptionsFlow(OptionsFlow):
     async def async_step_help(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        if user_input is not None:
-            return await self.async_step_init()
-        return self.async_show_form(
-            step_id="help",
-            data_schema=vol.Schema({}),
-        )
+        # Read-only guide page: the single "configure" menu option renders as a
+        # Back button that returns to the entities & learning page.
+        return self.async_show_menu(step_id="help", menu_options=["configure"])
 
     def _save(self) -> ConfigFlowResult:
         # Preserve the live tuning knobs that live only in options (set via the
