@@ -60,6 +60,10 @@ CONTROL_DOMAINS = [
 # instead of saving. Never persisted (popped before save).
 VIEW_HELP = "view_tuning_help"
 
+# README section with the full control reference. Passed to the guide page as a
+# description placeholder — hassfest forbids literal URLs in translation strings.
+README_URL = "https://github.com/jamesecc/ha-presence-sim#what-each-control-does"
+
 
 def _entities_selector(domains: list[str]) -> selector.EntitySelector:
     return selector.EntitySelector(
@@ -175,7 +179,11 @@ class PresenceSimulatorOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         # Read-only guide page: the single "configure" menu option renders as a
         # Back button that returns to the entities & learning page.
-        return self.async_show_menu(step_id="help", menu_options=["configure"])
+        return self.async_show_menu(
+            step_id="help",
+            menu_options=["configure"],
+            description_placeholders={"readme_url": README_URL},
+        )
 
     def _save(self) -> ConfigFlowResult:
         # Preserve the live tuning knobs that live only in options (set via the
