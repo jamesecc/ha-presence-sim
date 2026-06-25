@@ -1,5 +1,7 @@
 # Presence Simulator
 
+<img src="brand/icon.png" alt="Presence Simulator icon" width="128" align="right">
+
 A Home Assistant custom integration that **learns** how your home normally uses
 lights and energy over the week, then replays a **realistic, randomized**
 version of that activity while you're away — so anyone watching the house can't

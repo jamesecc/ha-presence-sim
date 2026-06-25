@@ -67,6 +67,7 @@ The data flow is **learn → store → simulate**, with `coordinator.py` as the 
 ## Open decisions / not yet done
 
 - Submitting to the **HACS default store** (would require adding the domain to home-assistant/brands and a PR to HACS) — not done; custom-repo install works in the meantime.
+- **Brand icon:** the icon shown in HACS and on the HA integration page comes from `home-assistant/brands` (served via `brands.home-assistant.io`, keyed by domain), **not** from this repo. Print-ready assets are prepared in `brand/` (`icon.png` 256², `icon@2x.png` 512², transparent + trimmed, plus `icon-master.png`). To make the icon appear, PR those to `home-assistant/brands` under `custom_integrations/presence_simulator/`. Not yet submitted (brands is a different repo, out of this session's GitHub scope). `brand/README.md` has the steps.
 
 GitHub "Block command line pushes that expose my email" is **enabled**, so always commit with the noreply email (`42879532+jamesecc@users.noreply.github.com`) or pushes will be rejected.
 
