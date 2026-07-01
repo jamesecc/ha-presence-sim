@@ -79,6 +79,10 @@
     "export_model": {
       "name": "Export model summary",
       "description": "Return a summary of the learned model as a service response."
+    },
+    "export_schedule": {
+      "name": "Export learned schedule",
+      "description": "Return the learned weekly schedule (per-entity on-probability per slot, aggregate, and a readable table) as a service response."
     }
   }
 }

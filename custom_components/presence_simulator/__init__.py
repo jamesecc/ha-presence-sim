@@ -18,11 +18,13 @@ from .const import (
     DOMAIN,
     PLATFORMS,
     SERVICE_EXPORT_MODEL,
+    SERVICE_EXPORT_SCHEDULE,
     SERVICE_RESET_MODEL,
     SERVICE_RUN_STEP,
     SIGNAL_MODEL_UPDATED,
 )
 from .coordinator import PresenceCoordinator
+from .model import WEEKDAYS, slot_label, slots_per_day
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -55,7 +57,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.async_stop()
 
     if not hass.data.get(DOMAIN):
-        for service in (SERVICE_RESET_MODEL, SERVICE_RUN_STEP, SERVICE_EXPORT_MODEL):
+        for service in (
+            SERVICE_RESET_MODEL,
+            SERVICE_RUN_STEP,
+            SERVICE_EXPORT_MODEL,
+            SERVICE_EXPORT_SCHEDULE,
+        ):
             if hass.services.has_service(DOMAIN, service):
                 hass.services.async_remove(DOMAIN, service)
 
@@ -117,6 +124,12 @@ def _async_register_services(hass: HomeAssistant) -> None:
             }
         return {"models": result}
 
+    async def _export_schedule(call: ServiceCall) -> dict:
+        result = {}
+        for coordinator in _coordinators(call):
+            result[coordinator.entry.entry_id] = _schedule_payload(coordinator)
+        return {"schedules": result}
+
     hass.services.async_register(DOMAIN, SERVICE_RESET_MODEL, _reset, schema=_TARGET_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_RUN_STEP, _run_step, schema=_TARGET_SCHEMA)
     hass.services.async_register(
@@ -126,3 +139,51 @@ def _async_register_services(hass: HomeAssistant) -> None:
         schema=_TARGET_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_EXPORT_SCHEDULE,
+        _export_schedule,
+        schema=_TARGET_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+
+
+def _grid(probs: list[float], slot_minutes: int) -> dict:
+    """Turn a flat per-bucket probability list into weekday -> {"HH:MM": p}."""
+    grid: dict[str, dict[str, float]] = {wd: {} for wd in WEEKDAYS}
+    for bucket, p in enumerate(probs):
+        weekday, hhmm = slot_label(bucket, slot_minutes)
+        grid[WEEKDAYS[weekday]][hhmm] = round(p, 3)
+    return grid
+
+
+def _render_tables(sched: dict, slot_minutes: int) -> str:
+    """Render each row (entities + aggregate) as a percentage grid (time x weekday)."""
+    spd = slots_per_day(slot_minutes)
+    times = [slot_label(b, slot_minutes)[1] for b in range(spd)]
+    lines: list[str] = []
+    for name, probs in sched.items():
+        lines.append(name)
+        lines.append("  time " + "".join(f"{wd:>5}" for wd in WEEKDAYS))
+        for i, hhmm in enumerate(times):
+            cells = "".join(f"{round(probs[wd * spd + i] * 100):>5}" for wd in range(7))
+            lines.append(f"  {hhmm}{cells}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _schedule_payload(coordinator: PresenceCoordinator) -> dict:
+    """Build the export_schedule response for one coordinator."""
+    model = coordinator.model
+    slot_minutes = model.slot_minutes
+    sched = model.schedule(coordinator.controlled)
+    return {
+        "slot_minutes": slot_minutes,
+        "entities": {
+            eid: _grid(probs, slot_minutes)
+            for eid, probs in sched.items()
+            if eid != "aggregate"
+        },
+        "aggregate": _grid(sched["aggregate"], slot_minutes),
+        "table": _render_tables(sched, slot_minutes),
+    }

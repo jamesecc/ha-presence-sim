@@ -37,6 +37,21 @@ def bucket_for(when: datetime, slot_minutes: int) -> int:
     return when.weekday() * spd + slot
 
 
+WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
+def slot_label(bucket: int, slot_minutes: int) -> tuple[int, str]:
+    """Inverse of ``bucket_for``: map a week-bucket back to (weekday, "HH:MM").
+
+    weekday is 0=Mon..6=Sun; the time is the start of the slot.
+    """
+    spd = slots_per_day(slot_minutes)
+    weekday = bucket // spd
+    slot_of_day = bucket % spd
+    minute_of_day = slot_of_day * slot_minutes
+    return weekday, f"{minute_of_day // 60:02d}:{minute_of_day % 60:02d}"
+
+
 def is_active(state: str | None, attributes: dict | None, power_threshold: float) -> bool | None:
     """Decide whether a raw entity state counts as 'active'.
 
@@ -128,6 +143,22 @@ class ActivityModel:
 
     def aggregate_probability(self, bucket: int) -> float:
         return self._agg.probability(bucket)
+
+    def schedule(self, entity_ids: list[str]) -> dict[str, list[float]]:
+        """Return the learned on-probability per week-bucket.
+
+        Keys are the requested entity ids (each falling back to the household
+        aggregate where it has no samples) plus an ``"aggregate"`` row. Values
+        are lists of length ``n_slots``; rendering into a weekday/time grid is
+        left to the caller so this module stays HA-free.
+        """
+        buckets = range(self.n_slots)
+        result: dict[str, list[float]] = {
+            eid: [self.entity_probability(eid, b) for b in buckets]
+            for eid in entity_ids
+        }
+        result["aggregate"] = [self.aggregate_probability(b) for b in buckets]
+        return result
 
     def total_observations(self) -> float:
         return sum(self._agg.total)

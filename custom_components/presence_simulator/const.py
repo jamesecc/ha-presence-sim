@@ -71,7 +71,15 @@ TIME_TUNABLES = (
 SERVICE_RESET_MODEL = "reset_model"
 SERVICE_RUN_STEP = "run_step"
 SERVICE_EXPORT_MODEL = "export_model"
+SERVICE_EXPORT_SCHEDULE = "export_schedule"
+
+# Bus event fired for every on/off action the simulator applies (drives Logbook).
+EVENT_ACTION = f"{DOMAIN}_action"
+
+# How many recent simulated actions to keep in memory for the "last action" sensor.
+HISTORY_MAXLEN = 100
 
 # Signals
 SIGNAL_AWAY_STATE = f"{DOMAIN}_away_state_{{entry_id}}"
 SIGNAL_MODEL_UPDATED = f"{DOMAIN}_model_updated_{{entry_id}}"
+SIGNAL_ACTION = f"{DOMAIN}_action_{{entry_id}}"
