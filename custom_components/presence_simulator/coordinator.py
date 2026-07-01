@@ -34,6 +34,7 @@ from .const import (
     CONF_QUIET_START,
     CONF_RANDOMNESS,
     CONF_SLOT_MINUTES,
+    CONTROLLABLE_DOMAINS,
     DEFAULT_JITTER_MINUTES,
     DEFAULT_MAX_CONCURRENT_FRACTION,
     DEFAULT_MIN_DWELL_MINUTES,
@@ -221,7 +222,16 @@ class PresenceCoordinator:
             state = self.hass.states.get(entity_id)
             raw = state.state if state else None
             attrs = state.attributes if state else None
-            active = is_active(raw, attrs, threshold)
+            # Controllable devices that lose power when off report 'unavailable';
+            # learn that as off rather than skipping (which would fall back to the
+            # inflated household aggregate).
+            domain = entity_id.split(".", 1)[0]
+            active = is_active(
+                raw,
+                attrs,
+                threshold,
+                unavailable_is_off=domain in CONTROLLABLE_DOMAINS,
+            )
             if active is None:
                 continue
             self.model.observe(entity_id, bucket, active)
@@ -360,16 +370,7 @@ class PresenceCoordinator:
     async def _apply(self, entity_id: str, turn_on: bool) -> None:
         domain = entity_id.split(".", 1)[0]
         # Only domains that support turn_on/turn_off services.
-        if domain not in (
-            "light",
-            "switch",
-            "fan",
-            "media_player",
-            "input_boolean",
-            "climate",
-            "humidifier",
-            "cover",
-        ):
+        if domain not in CONTROLLABLE_DOMAINS:
             domain = "homeassistant"  # generic turn_on/off
         service = SERVICE_TURN_ON if turn_on else SERVICE_TURN_OFF
         try:

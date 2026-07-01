@@ -42,6 +42,23 @@ ACTIVE_STATES = frozenset(
     {"on", "open", "home", "playing", "active", "heat", "cool", "cleaning"}
 )
 
+# Controllable domains: entities we can switch on/off. For these an
+# 'unavailable'/'unknown' state means the device is powered off (e.g. a smart
+# bulb cut from power), so it is learned as OFF rather than skipped. Sensor-only
+# domains keep skipping so genuine data gaps don't pollute the totals.
+CONTROLLABLE_DOMAINS = frozenset(
+    {
+        "light",
+        "switch",
+        "fan",
+        "media_player",
+        "input_boolean",
+        "climate",
+        "humidifier",
+        "cover",
+    }
+)
+
 # Runtime data key in hass.data[DOMAIN][entry_id]
 DATA_COORDINATOR = "coordinator"
 

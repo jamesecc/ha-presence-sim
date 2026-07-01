@@ -52,17 +52,25 @@ def slot_label(bucket: int, slot_minutes: int) -> tuple[int, str]:
     return weekday, f"{minute_of_day // 60:02d}:{minute_of_day % 60:02d}"
 
 
-def is_active(state: str | None, attributes: dict | None, power_threshold: float) -> bool | None:
+def is_active(
+    state: str | None,
+    attributes: dict | None,
+    power_threshold: float,
+    unavailable_is_off: bool = False,
+) -> bool | None:
     """Decide whether a raw entity state counts as 'active'.
 
     Returns None when the state is unknown/unavailable so it can be skipped
-    (so 'unavailable' periods don't pollute the learned totals).
+    (so 'unavailable' periods don't pollute the learned totals). When
+    ``unavailable_is_off`` is set — used for controllable devices that lose
+    power when off (e.g. a smart bulb reporting 'unavailable') — those states
+    are learned as off (False) instead of skipped.
     """
     if state is None:
-        return None
+        return False if unavailable_is_off else None
     state = state.lower()
     if state in ("unknown", "unavailable", "none", ""):
-        return None
+        return False if unavailable_is_off else None
     if state in ACTIVE_STATES:
         return True
     if state in ("off", "closed", "not_home", "away", "idle", "standby", "paused"):
