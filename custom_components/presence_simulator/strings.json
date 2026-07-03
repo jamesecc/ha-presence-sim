@@ -3,54 +3,67 @@
     "step": {
       "user": {
         "title": "Presence Simulator",
-        "description": "Choose which entities to learn from and which to control while away.",
+        "description": "This integration learns how your home normally uses lights and energy through the week, then replays a realistic, randomized version while you're away.\n\nPick what to control while away (and optionally extra things to learn from). The two settings below shape *learning*; the day-to-day tuning controls (variation, quiet hours, timing, etc.) appear as adjustable controls on the device page once setup finishes — no need to decide them now.",
         "data": {
-          "monitored_entities": "Entities to monitor (learn patterns from)",
-          "controlled_entities": "Entities to control in away mode"
+          "controlled_entities": "Entities to learn from and control when away simulation is enabled",
+          "monitored_entities": "Extra entities to learn from (optional)",
+          "slot_minutes": "Schedule resolution",
+          "power_threshold": "Power sensor 'active' threshold"
         },
         "data_description": {
-          "monitored_entities": "Lights, switches, power/energy sensors, media players, etc. Their on/off and activity patterns over time are learned.",
-          "controlled_entities": "Lights and switches the simulator will turn on and off to mimic someone being home."
-        }
-      },
-      "tuning": {
-        "title": "Behaviour tuning",
-        "description": "Defaults are sensible; adjust if you want more or less variation.",
-        "data": {
-          "slot_minutes": "Schedule resolution (minutes per time slot)",
-          "randomness": "Randomness (chance of deviating from learned pattern)",
-          "min_dwell_minutes": "Minimum time before an entity changes state again",
-          "jitter_minutes": "Random timing jitter within a slot",
-          "max_concurrent_fraction": "Max fraction of controlled entities on at once",
-          "power_threshold": "Power sensor 'active' threshold (W)",
-          "quiet_start": "Quiet hours start (mostly off)",
-          "quiet_end": "Quiet hours end"
+          "controlled_entities": "Lights and switches the simulator turns on and off while you're away to mimic someone being home. These are always learned from too, so you don't need to add them under 'Extra entities to learn from'.",
+          "monitored_entities": "Extra things to learn from but not switch — e.g. motion or power/energy sensors, media players. Your controlled entities are already learned, so you don't need to list them here.",
+          "slot_minutes": "How finely the week is divided when learning and replaying (e.g. 30-minute blocks). Smaller is more detailed but slower to learn. Changing this later starts a separate model for the new resolution (your old one is kept).",
+          "power_threshold": "For power/energy sensors, the wattage above which a device counts as 'in use' while learning."
         }
       }
     }
   },
   "options": {
     "step": {
-      "init": {
-        "title": "Entities",
-        "description": "Update which entities are monitored and controlled.",
+      "configure": {
+        "title": "Entities & learning",
+        "description": "Update what's controlled and learned from, and the two learning settings below.\n\n**The day-to-day tuning controls** live on the device page (Settings → Devices & Services → Presence Simulator) and can be changed anytime — they don't affect learned data:\n\n- **Routine variation** — how often the house breaks its learned routine. 0% = faithful replay; higher = more surprises. Default 15%.\n- **Minimum time between changes** — the shortest time a device holds its new state before changing again; stops lights flickering on and off. Default 20 min.\n- **Switch timing jitter** — each change is nudged by a random delay up to this many minutes, so switches don't all happen on the clock tick. Default 7 min.\n- **Max devices on at once** — a cap on how much of the house is lit at the same time, as a share of your controlled devices. 85% = at most ~85% on together. Lower it if the whole house lighting up looks unrealistic.\n- **Quiet hours start / end** — an overnight window kept mostly dark (the odd light may still come on).\n\nFor the full explanation and everything else the integration does, see the **[README on GitHub]({readme_url})**.",
         "data": {
-          "monitored_entities": "Entities to monitor (learn patterns from)",
-          "controlled_entities": "Entities to control in away mode"
+          "controlled_entities": "Entities to learn from and control when away simulation is enabled",
+          "monitored_entities": "Extra entities to learn from (optional)",
+          "slot_minutes": "Schedule resolution",
+          "power_threshold": "Power sensor 'active' threshold"
+        },
+        "data_description": {
+          "controlled_entities": "Lights and switches the simulator turns on and off while away. These are always learned from too, so you don't need to add them under 'Extra entities to learn from'.",
+          "monitored_entities": "Extra things to learn from but not switch. Your controlled entities are already learned, so you don't need to list them here.",
+          "slot_minutes": "How finely the week is divided. Changing it starts a separate model for the new resolution; your current model is saved and restored if you switch back.",
+          "power_threshold": "For power/energy sensors, the wattage above which a device counts as 'in use' while learning."
         }
       },
-      "tuning": {
-        "title": "Behaviour tuning",
-        "data": {
-          "slot_minutes": "Schedule resolution (minutes per time slot)",
-          "randomness": "Randomness (chance of deviating from learned pattern)",
-          "min_dwell_minutes": "Minimum time before an entity changes state again",
-          "jitter_minutes": "Random timing jitter within a slot",
-          "max_concurrent_fraction": "Max fraction of controlled entities on at once",
-          "power_threshold": "Power sensor 'active' threshold (W)",
-          "quiet_start": "Quiet hours start (mostly off)",
-          "quiet_end": "Quiet hours end"
-        }
+      "slot_confirm": {
+        "title": "Change schedule resolution?",
+        "description": "Changing the schedule resolution switches to a separate learned model for the new resolution, so learning coverage will appear to start over.\n\nYour current model is **saved**, not deleted — switch the resolution back and it's restored automatically. Submit to continue, or go back to keep the current resolution."
+      }
+    }
+  },
+  "entity": {
+    "number": {
+      "randomness": {
+        "name": "Routine variation"
+      },
+      "min_dwell_minutes": {
+        "name": "Minimum time between changes"
+      },
+      "jitter_minutes": {
+        "name": "Switch timing jitter"
+      },
+      "max_concurrent_fraction": {
+        "name": "Max devices on at once"
+      }
+    },
+    "time": {
+      "quiet_start": {
+        "name": "Quiet hours start"
+      },
+      "quiet_end": {
+        "name": "Quiet hours end"
       }
     }
   },
@@ -66,6 +79,10 @@
     "export_model": {
       "name": "Export model summary",
       "description": "Return a summary of the learned model as a service response."
+    },
+    "export_schedule": {
+      "name": "Export learned schedule",
+      "description": "Return the learned weekly schedule (per-entity on-probability per slot, aggregate, and a readable table) as a service response."
     }
   }
 }

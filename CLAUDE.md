@@ -63,17 +63,23 @@ The data flow is **learn → store → simulate**, with `coordinator.py` as the 
 - **`.claude/` and `__pycache__/` are git-ignored.** `.claude/settings.local.json` was accidentally staged once and amended out before the first push — it must never be tracked.
 - **`manifest.json` key order is load-bearing:** hassfest requires `domain`, `name`, then strictly alphabetical. `integration_type` must come before `iot_class`. Keep new keys alphabetised.
 - **GitHub Actions pinned to Node-24 versions:** `actions/checkout@v5`, `actions/setup-python@v6` (Node 20 was deprecated). Don't downgrade.
+- **No literal URLs in `strings.json`/`translations/en.json`:** hassfest's `TRANSLATIONS` check fails any step text containing a URL (`[ERROR] [TRANSLATIONS] ... the string should not contain URLs, please use description placeholders instead`). Put a `{placeholder}` in the string and inject the real URL at runtime via `description_placeholders=` on `async_show_form`/`async_show_menu`. The options `help` guide does this for the README link (`{readme_url}` → `README_URL` in `config_flow.py`). This bit `v0.1.0-alpha.2` and was fixed in `310893a`.
 
 ## Open decisions / not yet done
 
 - Submitting to the **HACS default store** (would require adding the domain to home-assistant/brands and a PR to HACS) — not done; custom-repo install works in the meantime.
+- **Custom Lovelace card / heatmap visualisation for the learned schedule** — deferred to a later date. Today the schedule is viewable via the `export_schedule` service (structured probabilities + a text `table`), which can feed a Markdown card. A dedicated frontend card (e.g. a weekday×time heatmap) would be a nicer UX but is net-new frontend work; not started.
+- **Brand icon:** the icon shown in HACS and on the HA integration page comes from `home-assistant/brands` (served via `brands.home-assistant.io`, keyed by domain), **not** from this repo. Print-ready assets are prepared in `brand/` (`icon.png` 256², `icon@2x.png` 512², transparent + trimmed, plus `icon-master.png`). To make the icon appear, PR those to `home-assistant/brands` under `custom_integrations/presence_simulator/`. Not yet submitted (brands is a different repo, out of this session's GitHub scope). `brand/README.md` has the steps.
 
 GitHub "Block command line pushes that expose my email" is **enabled**, so always commit with the noreply email (`42879532+jamesecc@users.noreply.github.com`) or pushes will be rejected.
 
 ## Releases
 
-- Repo is **public** and the latest release is **`v0.0.2`**, published as a GitHub Release (annotated tag). `manifest.json` `version` is kept **in sync with the tag** — bump both together (HACS uses the tag as the installed version and also reads the manifest version).
-- Release flow used: bump `manifest.json` version + commit, push `main`, `git tag -a vX.Y.Z`, push the tag, then `gh release create vX.Y.Z`.
+- Repo is **public**. Stable releases `v0.0.1`/`v0.0.2` are on `main`. The **`v0.1.0` line ships as pre-releases** — `v0.1.0-alpha` (`9b2c915`) and `v0.1.0-alpha.2` (`ddf8743`) were cut from the `claude/config-ux-improvements-eibdx0` feature branch; **`main` is still `v0.0.2`** (the 0.1.0 work isn't merged yet).
+- `manifest.json` `version` is kept **in sync with the tag** — bump both together (HACS uses the tag as the installed version and also reads the manifest version). The manifest value is the tag **without** the leading `v`. SemVer pre-release tags pass hassfest (e.g. tag `v0.1.0-alpha.2` ↔ manifest `0.1.0-alpha.2`).
+- **Release-notes format (user preference):** always deliver proposed release notes as raw GitHub-flavored **markdown inside a single fenced code block** so they can be pasted straight into the GitHub Release — don't only render them in chat. Ask/choose between *cumulative since last stable* and *incremental since last pre-release*.
+- Release flow (the user runs the final steps **locally**): bump `manifest.json` + commit, push, `git tag -a vX.Y.Z` **with the noreply identity** (`git -c user.name=jamesecc -c user.email=42879532+jamesecc@users.noreply.github.com tag -a ...`) or the push is rejected by the email-privacy block (GH007), push the tag, then create the GitHub Release (tick *pre-release* for alphas/betas).
+- **In the Claude Code web/remote session you can't finish a release yourself:** tag pushes hit the egress-policy `403` (only the session's working branch is pushable) and there's no `gh`/MCP release-creation tool. Prepare the manifest bump + markdown notes and hand the tag/release steps to the user.
 - `v0.0.2` fixed a setup crash where the immediate startup sample wrapped the synchronous `_async_sample` `@callback` in `hass.async_create_task` (`TypeError: a coroutine was expected, got None`); it's now called directly.
 
 ## Environment

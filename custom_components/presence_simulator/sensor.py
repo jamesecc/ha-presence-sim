@@ -15,6 +15,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import (
     DATA_COORDINATOR,
     DOMAIN,
+    SIGNAL_ACTION,
     SIGNAL_AWAY_STATE,
     SIGNAL_MODEL_UPDATED,
 )
@@ -31,6 +32,7 @@ async def async_setup_entry(
         [
             LearningCoverageSensor(coordinator),
             ObservationsSensor(coordinator),
+            LastActionSensor(coordinator),
         ]
     )
 
@@ -53,6 +55,7 @@ class _BaseSensor(SensorEntity):
         for signal in (
             SIGNAL_MODEL_UPDATED.format(entry_id=entry_id),
             SIGNAL_AWAY_STATE.format(entry_id=entry_id),
+            SIGNAL_ACTION.format(entry_id=entry_id),
         ):
             self.async_on_remove(
                 async_dispatcher_connect(self.hass, signal, self._handle_update)
@@ -102,4 +105,32 @@ class ObservationsSensor(_BaseSensor):
             "learned_entities": list(self._coordinator.model.entities),
             "last_sample": self._coordinator.last_sample,
             "slot_minutes": self._coordinator.slot_minutes,
+        }
+
+
+class LastActionSensor(_BaseSensor):
+    """Most recent on/off action the simulator applied, with recent history."""
+
+    _attr_name = "Last action"
+    _attr_icon = "mdi:history"
+
+    def __init__(self, coordinator: PresenceCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_last_action"
+
+    @property
+    def native_value(self) -> str | None:
+        history = self._coordinator.history
+        if not history:
+            return None
+        latest = history[0]
+        return f"{latest['entity_id']} → {latest['action']}"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        history = self._coordinator.history
+        return {
+            "recent": history,
+            "action_count": len(history),
+            "last_action_time": history[0]["time"] if history else None,
         }

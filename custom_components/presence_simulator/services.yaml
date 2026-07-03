@@ -38,3 +38,18 @@ export_model:
       selector:
         config_entry:
           integration: presence_simulator
+
+export_schedule:
+  name: Export learned schedule
+  description: >-
+    Return the learned weekly schedule as a service response: per-controlled-entity
+    on-probability for every time slot, the household aggregate, and a
+    human-readable weekday-by-time table.
+  fields:
+    entry_id:
+      name: Config entry
+      description: Optional. Limit to a single Presence Simulator entry; omit to apply to all.
+      required: false
+      selector:
+        config_entry:
+          integration: presence_simulator
