@@ -2,9 +2,17 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+It doubles as the project's **status file**: sessions have historically committed updates to it whenever a recorded fact changed (see the `Update CLAUDE.md: ...` commits). Keep doing that — **if your change makes anything written here untrue (version, services, architecture, decisions), update this file in the same piece of work.** That is how continuity survives across sessions and models.
+
 ## What this is
 
-A single Home Assistant **custom integration** (`custom_components/presence_simulator/`) that learns a home's light/energy usage over the week and replays a realistic, randomized version while away so the house looks occupied. There is no app harness here — the code runs inside a Home Assistant install. To use it, the folder is copied into HA's `config/custom_components/` and loaded as an integration.
+A single Home Assistant **custom integration** (`custom_components/presence_simulator/`) that learns a home's light/energy usage over the week and replays a realistic, randomized version while away so the house looks occupied. There is no app harness here — the code runs inside a Home Assistant install (minimum HA `2024.4.0`, per `hacs.json`). To use it, the folder is copied into HA's `config/custom_components/` or installed via HACS custom repo, then loaded as an integration.
+
+## How work happens here
+
+- Feature work goes on `claude/<topic>` branches and reaches `main` via PR (e.g. PR #2 merged `claude/more-ux-improvements`). **`main` is the release line.**
+- In a Claude Code **web/remote session** you can only push the session's designated working branch — pushes to `main` and tag pushes hit the egress-policy `403`, and there is no `gh` (use the GitHub MCP tools instead). Prepare everything; the user merges PRs and runs release steps **locally** (where `gh` is authenticated as `jamesecc` and SSH works).
+- Verification without a real HA instance is limited (see next section). **State plainly what you verified and what you couldn't** — never imply behavioral testing that didn't happen.
 
 ## Developing without Home Assistant installed
 
@@ -28,60 +36,87 @@ def load(name):
 load('const'); model = load('model')   # now exercise model.ActivityModel, model.bucket_for, ...
 ```
 
-Behavioral verification beyond pure logic requires running inside a real Home Assistant instance.
+Behavioral verification beyond pure logic requires running inside a real Home Assistant instance — the user does that; you cannot.
+
+## Definition of done
+
+Before calling any change finished, run from the repo root:
+
+```bash
+python3 -m py_compile custom_components/presence_simulator/*.py
+python3 -c "import glob, json; [json.load(open(f)) for f in ['hacs.json'] + glob.glob('custom_components/**/*.json', recursive=True)]"
+diff custom_components/presence_simulator/strings.json custom_components/presence_simulator/translations/en.json  # must print nothing
+```
+
+Then check, where applicable:
+
+- **Pure-logic changes** (`model.py`, `const.py`): actually exercised via the synthetic-package loader with a few concrete inputs, not just compiled.
+- **`manifest.json`** still ordered `domain`, `name`, then strictly alphabetical.
+- **No literal URLs** in `strings.json`/`translations/en.json` (hassfest fails them — see Corrections).
+- **UI text changed** → both strings files updated identically; keys stay in sync with config-flow step ids, `services.yaml`, and entity `translation_key`s (`entity.number.<key>.name`, `entity.time.<key>.name`).
+- **Facts in this file** still true; update it if not.
+- Commit as `jamesecc <42879532+jamesecc@users.noreply.github.com>` (hard rule, see below).
+
+These mirror the three CI jobs (`hassfest`, `hacs`, `syntax`) — if they pass locally, CI almost always passes.
 
 ## Architecture
 
 The data flow is **learn → store → simulate**, with `coordinator.py` as the hub:
 
-- **`model.py`** — `ActivityModel`: the learning core. The week is split into fixed slots (default 30 min → 336 buckets: `weekday * slots_per_day + slot_of_day`, see `bucket_for`). Per monitored entity it accumulates `on`/`total` counts per bucket and exposes a Laplace-smoothed on-probability. `is_active()` maps raw states to active/inactive (numeric states = power sensors, active above a watt threshold; returns `None` for unknown/unavailable so gaps don't pollute totals). Keeps an aggregate household profile as the fallback for controlled-but-never-monitored entities.
+- **`model.py`** — `ActivityModel`: the learning core, pure Python. The week is split into fixed slots (default 30 min → 336 buckets: `weekday * slots_per_day + slot_of_day`, see `bucket_for`; `slot_label` is its inverse). Per monitored entity it accumulates `on`/`total` counts per bucket and exposes a Laplace-smoothed on-probability (`PRIOR_ON`/`PRIOR_TOTAL`). Keeps an aggregate household profile as the fallback for controlled-but-never-monitored entities. `schedule(entity_ids)` returns per-entity probability rows plus an `"aggregate"` row — rendering is left to callers so this module stays HA-free. `is_active(state, attributes, threshold, unavailable_is_off)` maps raw states to active/inactive: numeric states are power sensors (active above the watt threshold); `unknown`/`unavailable` return `None` (skip) by default, but **`False` when `unavailable_is_off`** — used for `CONTROLLABLE_DOMAINS`, because a smart bulb cut from power reports `unavailable` and should be learned as off, not skipped (skipping would fall back to the inflated household aggregate; commit `5d2e3e4`).
 - **`coordinator.py`** — `PresenceCoordinator` owns the model and two loops:
-  - *Learning* runs always: samples monitored entities every `SAMPLE_MINUTES` (5) and persists.
-  - *Simulation* runs only while away mode is on: each slot it computes a desired on/off per controlled entity from `entity_probability`, then layers randomness — deviation chance, per-entity min-dwell, per-change timing jitter, max-concurrent cap, and quiet-hours suppression. Changes are applied via `homeassistant`/domain `turn_on`/`turn_off` (covers use `open`/`close`). On away-off it turns back off everything it switched on (tracked in `_controlled_by_us`).
-- **`__init__.py`** — entry setup/unload, options-update reload listener, and the three services (`reset_model`, `run_step`, `export_model`). Runtime objects live in `hass.data[DOMAIN][entry_id]`.
-- **`config_flow.py`** — two-step UI (entities, then tuning) for both initial config and options, using entity `selector`s. `MONITOR_DOMAINS`/`CONTROL_DOMAINS` define which entity domains are offered.
-- **`switch.py` / `sensor.py`** — the away-mode switch and learning-coverage/observations diagnostics. They re-render via dispatcher signals (`SIGNAL_AWAY_STATE`, `SIGNAL_MODEL_UPDATED`) emitted by the coordinator.
+  - *Learning* runs always: samples every `SAMPLE_MINUTES` (5) and persists. **`monitored` is the union of the monitored and controlled lists** — controlled entities are always learned from, the user never lists anything twice.
+  - *Simulation* runs only while away mode is on: each slot it computes desired on/off per controlled entity from `entity_probability`, then layers randomness — deviation chance, per-entity min-dwell, per-change timing jitter, max-concurrent cap, and quiet-hours suppression (probability ×0.15 inside the window; the window may wrap past midnight). Changes go via domain `turn_on`/`turn_off` (covers use `open_cover`/`close_cover`). On away-off it turns off everything it switched on (tracked in `_controlled_by_us`).
+  - Every applied action is recorded three ways: an in-memory `history` deque (`HISTORY_MAXLEN` 100, feeds the Last-action sensor), an `EVENT_ACTION` bus event (feeds the Logbook), and the `SIGNAL_ACTION` dispatcher signal.
+  - **Slot-size changes are non-destructive**: `async_load` parks the old model under `archived_models[str(slot)]` inside the Store blob and restores a previously learned model for the new slot if one exists. (`ActivityModel.from_dict` still returns an empty model on slot mismatch — the parking logic lives in the coordinator; preserve both halves.) `reset_model` discards archives too.
+  - `update_option(key, value)` persists a single live knob into `entry.options` — this is how the number/time entities write.
+- **`__init__.py`** — entry setup/unload, the options-update listener, and **four services**: `reset_model`, `run_step`, `export_model`, `export_schedule` (the two exports return service responses, `SupportsResponse.OPTIONAL`). The listener reloads the entry **only on a slot-size change**; everything else is read live via `_opt`, so it just nudges entities to re-render. Also renders `export_schedule`'s weekday×time grids and text `table` (`_grid`, `_render_tables`) so `model.py` stays HA-free. Runtime objects live in `hass.data[DOMAIN][entry_id]`.
+- **`config_flow.py`** — **single-page** setup and options (step ids `user` / `configure`): controlled entities (required), monitored entities (optional), `slot_minutes` slider, `power_threshold`. The day-to-day tuning knobs are deliberately *not* wizard fields — they're live entities. The options flow adds a `slot_confirm` step when the slot size changed, and `_save()` merges into existing `entry.options` so entity edits don't wipe the live-knob values. `MONITOR_DOMAINS`/`CONTROL_DOMAINS` define which domains the selectors offer; `README_URL` is injected as the `{readme_url}` placeholder.
+- **`number.py` / `time.py`** — live tuning entities (device Configuration block), generated from the `NUMBER_TUNABLES`/`TIME_TUNABLES` spec tuples in `const.py`. Scale convention: **displayed × scale = stored** (fraction knobs display as %, scale 0.01; minute knobs scale 1, stored as int). Writes go through `coordinator.update_option` → `entry.options` and take effect immediately, no reload. **Adding a live knob = a const + a spec tuple + translation keys**; no new entity code.
+- **`switch.py` / `sensor.py`** — the away-mode switch and three diagnostics: learning coverage, observations, and last action (recent history in attributes). They re-render via dispatcher signals (`SIGNAL_AWAY_STATE`, `SIGNAL_MODEL_UPDATED`, `SIGNAL_ACTION`) emitted by the coordinator.
+- **`logbook.py`** — describes `EVENT_ACTION` so every simulated on/off lands on the native Logbook timeline. Not in `PLATFORMS` — HA's logbook discovers it by module name.
+- `PLATFORMS` in `const.py` is `["switch", "sensor", "number", "time"]` — a new entity platform means a new module *plus* an entry there.
 
 ## Conventions and invariants
 
-- All tunables and keys live in `const.py`; config flow, coordinator, and defaults all reference them — add new options there first.
-- The coordinator reads settings via `_opt()`, which checks `entry.options` then `entry.data`, so options-flow edits take effect on reload without touching `data`.
-- The learned model is persisted with HA's `Store`. **Changing `slot_minutes` resets the model** (`ActivityModel.from_dict` returns an empty model on slot-size mismatch) because the bucket layout changes — preserve this guard.
-- `strings.json` and `translations/en.json` are kept identical; update both when changing UI text, and keep keys in sync with the config-flow steps and `services.yaml`.
+- **`const.py` first**: all tunables, config keys, defaults, service names, signals, and the `NUMBER_TUNABLES`/`TIME_TUNABLES` specs live there; config flow, coordinator, and platforms all reference them — add new options there before anything else.
+- **`entry.options` is the single source of truth for live tuning.** The coordinator reads settings via `_opt()` (options, then data, then default). Live knobs never require a reload; only `slot_minutes` does.
+- **Slot-size changes must stay non-destructive** (the `archived_models` parking described above) — don't regress to wiping the model.
+- Learning treats `unavailable`/`unknown` as *skip* for sensor-style domains but as *off* for `CONTROLLABLE_DOMAINS` — keep that split.
+- `strings.json` and `translations/en.json` are kept **identical**; update both when changing UI text, and keep keys in sync with the config-flow steps, `services.yaml`, and entity `translation_key`s.
 
-## Repository & distribution status
+## Repository & distribution
 
-- **Remote:** `git@github.com:jamesecc/ha-presence-sim.git`, branch `main`. Push over **SSH** (the key works). `gh` is now authenticated (see environment note) and usable for releases/API.
-- **Visibility: PUBLIC.** HACS custom-repo install works without a PAT. README documents both HACS and manual install.
-- **Commit identity:** author/commit with `jamesecc <42879532+jamesecc@users.noreply.github.com>` (GitHub noreply). The original commits used the real iCloud email and were rewritten + force-pushed to scrub it. Keep using the noreply email for all future commits via `git -c user.name=... -c user.email=...`.
-- **Packaging:** `hacs.json` lives at the **repo root** (HACS reads it there). The canonical README is at the repo root (HACS renders the root README); the in-folder `custom_components/.../README.md` is just a pointer to avoid drift.
-- **License:** MIT (`LICENSE`, © 2026 jamesecc) — chosen as the HACS/HA-custom-integration norm; Apache 2.0 was the considered alternative (declined as heavier than needed).
-- **CI:** `.github/workflows/validate.yml` runs on push/PR/weekly-cron with three jobs — `hassfest` (HA manifest/structure validation, Docker action), `hacs` (HACS validation, `category: integration`, `ignore: brands` since the domain isn't in home-assistant/brands), and `syntax` (py_compile + JSON validation). The weekly cron exists to catch HA releases that invalidate the manifest without a push.
+- **Remote:** `git@github.com:jamesecc/ha-presence-sim.git`, default branch `main`, **public**. HACS custom-repo install works without a PAT; README documents both HACS and manual install.
+- **Commit identity — hard rule:** author/commit as `jamesecc <42879532+jamesecc@users.noreply.github.com>` via `git -c user.name=... -c user.email=...`. GitHub's "Block command line pushes that expose my email" is **enabled** — anything committed or tagged with the real iCloud email is rejected (GH007). The original history was rewritten + force-pushed once to scrub that email; never reintroduce it.
+- **Packaging:** `hacs.json` lives at the **repo root** (`content_in_root: false`, `render_readme: true`, min HA `2024.4.0`). The canonical README is the root one (HACS renders it); `custom_components/.../README.md` is just a pointer to avoid drift.
+- **License:** MIT (`LICENSE`, © 2026 jamesecc) — the HACS/HA-custom-integration norm; Apache 2.0 was considered and declined as heavier than needed.
+- **CI:** `.github/workflows/validate.yml` runs on push/PR/weekly-cron with three jobs — `hassfest` (HA manifest/structure validation, Docker action), `hacs` (HACS validation, `category: integration`, `ignore: brands` since the domain isn't in home-assistant/brands), and `syntax` (py_compile + JSON validation). The weekly cron catches HA releases that invalidate the manifest without a push.
 
 ## Corrections already applied (don't reintroduce)
 
 - **`.claude/` and `__pycache__/` are git-ignored.** `.claude/settings.local.json` was accidentally staged once and amended out before the first push — it must never be tracked.
 - **`manifest.json` key order is load-bearing:** hassfest requires `domain`, `name`, then strictly alphabetical. `integration_type` must come before `iot_class`. Keep new keys alphabetised.
 - **GitHub Actions pinned to Node-24 versions:** `actions/checkout@v5`, `actions/setup-python@v6` (Node 20 was deprecated). Don't downgrade.
-- **No literal URLs in `strings.json`/`translations/en.json`:** hassfest's `TRANSLATIONS` check fails any step text containing a URL (`[ERROR] [TRANSLATIONS] ... the string should not contain URLs, please use description placeholders instead`). Put a `{placeholder}` in the string and inject the real URL at runtime via `description_placeholders=` on `async_show_form`/`async_show_menu`. The options `help` guide does this for the README link (`{readme_url}` → `README_URL` in `config_flow.py`). This bit `v0.1.0-alpha.2` and was fixed in `310893a`.
-
-## Open decisions / not yet done
-
-- Submitting to the **HACS default store** (would require adding the domain to home-assistant/brands and a PR to HACS) — not done; custom-repo install works in the meantime.
-- **Custom Lovelace card / heatmap visualisation for the learned schedule** — deferred to a later date. Today the schedule is viewable via the `export_schedule` service (structured probabilities + a text `table`), which can feed a Markdown card. A dedicated frontend card (e.g. a weekday×time heatmap) would be a nicer UX but is net-new frontend work; not started.
-- **Brand icon:** the icon shown in HACS and on the HA integration page comes from `home-assistant/brands` (served via `brands.home-assistant.io`, keyed by domain), **not** from this repo. Print-ready assets are prepared in `brand/` (`icon.png` 256², `icon@2x.png` 512², transparent + trimmed, plus `icon-master.png`). To make the icon appear, PR those to `home-assistant/brands` under `custom_integrations/presence_simulator/`. Not yet submitted (brands is a different repo, out of this session's GitHub scope). `brand/README.md` has the steps.
-
-GitHub "Block command line pushes that expose my email" is **enabled**, so always commit with the noreply email (`42879532+jamesecc@users.noreply.github.com`) or pushes will be rejected.
+- **No literal URLs in `strings.json`/`translations/en.json`:** hassfest's `TRANSLATIONS` check fails any step text containing a URL (`[ERROR] [TRANSLATIONS] ... the string should not contain URLs, please use description placeholders instead`). Put a `{placeholder}` in the string and inject the real URL at runtime via `description_placeholders=` on `async_show_form`. The options `configure` step does this for the README link (`{readme_url}` → `README_URL` in `config_flow.py`). This bit `v0.1.0-alpha.2` and was fixed in `310893a`.
+- **Don't wrap synchronous `@callback`s in `hass.async_create_task`:** the immediate startup sample once did (`TypeError: a coroutine was expected, got None`, crashed setup) — fixed in `v0.0.2` by calling `_async_sample` directly.
 
 ## Releases
 
-- Repo is **public**. Stable releases `v0.0.1`/`v0.0.2` are on `main`. The **`v0.1.0` line ships as pre-releases** — `v0.1.0-alpha` (`9b2c915`) and `v0.1.0-alpha.2` (`ddf8743`) were cut from the `claude/config-ux-improvements-eibdx0` feature branch; **`main` is still `v0.0.2`** (the 0.1.0 work isn't merged yet).
-- `manifest.json` `version` is kept **in sync with the tag** — bump both together (HACS uses the tag as the installed version and also reads the manifest version). The manifest value is the tag **without** the leading `v`. SemVer pre-release tags pass hassfest (e.g. tag `v0.1.0-alpha.2` ↔ manifest `0.1.0-alpha.2`).
-- **Release-notes format (user preference):** always deliver proposed release notes as raw GitHub-flavored **markdown inside a single fenced code block** so they can be pasted straight into the GitHub Release — don't only render them in chat. Ask/choose between *cumulative since last stable* and *incremental since last pre-release*.
-- Release flow (the user runs the final steps **locally**): bump `manifest.json` + commit, push, `git tag -a vX.Y.Z` **with the noreply identity** (`git -c user.name=jamesecc -c user.email=42879532+jamesecc@users.noreply.github.com tag -a ...`) or the push is rejected by the email-privacy block (GH007), push the tag, then create the GitHub Release (tick *pre-release* for alphas/betas).
-- **In the Claude Code web/remote session you can't finish a release yourself:** tag pushes hit the egress-policy `403` (only the session's working branch is pushable) and there's no `gh`/MCP release-creation tool. Prepare the manifest bump + markdown notes and hand the tag/release steps to the user.
-- `v0.0.2` fixed a setup crash where the immediate startup sample wrapped the synchronous `_async_sample` `@callback` in `hass.async_create_task` (`TypeError: a coroutine was expected, got None`); it's now called directly.
+- **Current state: `main` is `v0.1.1`** (manifest `0.1.1`, tag `v0.1.1`, PR #2 merged). Tag history: `v0.0.1`, `v0.0.2`, `v0.1.0-alpha`, `v0.1.0-alpha.2`, `v0.1.0-alpha.3`, `v0.1.1-alpha.1`, `v0.1.1-alpha.2`, `v0.1.1`. Pattern: alphas are cut from the feature branch as GitHub pre-releases; the stable is tagged after merge to `main`.
+- `manifest.json` `version` is kept **in sync with the tag** — bump both together (HACS uses the tag as the installed version and also reads the manifest). The manifest value is the tag **without** the leading `v`; SemVer pre-release tags pass hassfest (tag `v0.1.1-alpha.2` ↔ manifest `0.1.1-alpha.2`).
+- **Release-notes format (user preference, keep):** always deliver proposed release notes as raw GitHub-flavored **markdown inside a single fenced code block** so they can be pasted straight into the GitHub Release — don't only render them in chat. Ask/choose between *cumulative since last stable* and *incremental since last pre-release*.
+- Release flow (the user runs the final steps **locally**): bump `manifest.json` + commit, push, `git -c user.name=jamesecc -c user.email=42879532+jamesecc@users.noreply.github.com tag -a vX.Y.Z` (noreply identity or the tag push is rejected, GH007), push the tag, create the GitHub Release (tick *pre-release* for alphas/betas).
+- **In a web/remote session you can't finish a release yourself** (tag pushes 403, no release-creation tool): prepare the manifest bump + markdown notes and hand the tag/release steps to the user.
+
+## Open decisions / not yet done
+
+- Submitting to the **HACS default store** (requires adding the domain to home-assistant/brands and a PR to HACS) — not done; custom-repo install works in the meantime.
+- **Custom Lovelace card / heatmap visualisation for the learned schedule** — deferred. Today the schedule is viewable via the `export_schedule` service (structured probabilities + a text `table`), which can feed a Markdown card. A dedicated weekday×time heatmap card would be nicer UX but is net-new frontend work; not started.
+- **Brand icon:** the icon in HACS and on the HA integration page comes from `home-assistant/brands` (keyed by domain), **not** from this repo. Print-ready assets live in `brand/` (`icon.png` 256², `icon@2x.png` 512², transparent + trimmed, plus `icon-master.png`). To make it appear, PR them to `home-assistant/brands` under `custom_integrations/presence_simulator/` — not yet submitted (different repo, outside session GitHub scope). `brand/README.md` has the steps.
+- **No automated tests.** The `syntax` CI job compiles and validates JSON; behavioral checks are manual (synthetic-package loader + a real HA install). A small pure-Python test suite for `model.py` would be the natural first addition if tests are ever wanted.
 
 ## Environment
 
-`~/.config` was previously owned by **root** (mode 700), which broke `gh` and made `git` print `Permission denied` warnings. **Fixed** by the user with `sudo chown -R "$(id -un)":staff ~/.config` — git is now clean. `gh` is now **authenticated** as `jamesecc` (git protocol SSH) and works for releases/API; SSH also works for all GitHub operations.
+- **Local machine (the user's):** `gh` is authenticated as `jamesecc` (git protocol SSH) and works for releases/API; SSH works for all GitHub operations. (A past quirk — `~/.config` owned by root, breaking `gh` and making git print `Permission denied` — was fixed with `chown`; if those symptoms reappear, that's the cause.)
+- **Claude Code web/remote sessions:** no `gh`; use the GitHub MCP tools. Only the session's designated working branch is pushable.
