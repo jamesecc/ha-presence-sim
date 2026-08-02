@@ -19,7 +19,7 @@ CONF_QUIET_END = "quiet_end"
 # Defaults
 DEFAULT_SLOT_MINUTES = 30
 DEFAULT_RANDOMNESS = 0.15
-DEFAULT_MIN_DWELL_MINUTES = 20
+DEFAULT_MIN_DWELL_MINUTES = 45
 DEFAULT_JITTER_MINUTES = 7
 DEFAULT_POWER_THRESHOLD = 5.0  # watts; numeric monitored entity is "active" above this
 DEFAULT_MAX_CONCURRENT_FRACTION = 0.85
@@ -36,6 +36,20 @@ STORAGE_KEY_FMT = f"{DOMAIN}.model.{{entry_id}}"
 # Laplace smoothing prior for on-probability estimates.
 PRIOR_ON = 1.0
 PRIOR_TOTAL = 4.0
+
+# Simulation decision shaping.
+#
+# The smoothed probability above can never reach 0 or 1 — after four weeks of
+# 15-minute slots a never-on bucket still reads ~0.06 and an always-on bucket
+# caps at ~0.81. Replaying those directly makes a device that is genuinely
+# never used flicker on a few times a night, and a device that is genuinely
+# always on flicker off. The deadband turns those tails into certainties.
+PROB_DEADBAND_LOW = 0.10  # below this a device is simply never switched on
+PROB_DEADBAND_HIGH = 0.90  # above this it is simply left on
+
+# Inside quiet hours only devices learned to be reliably on at that time of week
+# (e.g. a landing nightlight) keep running; everything else is held off.
+QUIET_KEEP_ON_THRESHOLD = 0.60
 
 # States we treat as "active"/on for non-numeric monitored entities.
 ACTIVE_STATES = frozenset(

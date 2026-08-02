@@ -62,11 +62,32 @@ reference.
 | --- | --- | --- |
 | **Schedule resolution** | Configure | How finely the week is divided when learning/replaying (e.g. 30-min blocks). Smaller = more detailed, slower to learn. Changing it starts a *separate* model for the new resolution; the old one is kept and restored if you switch back. |
 | **Power 'active' threshold** | Configure | For power/energy sensors, the watts above which a device counts as "in use" while learning. |
-| **Routine variation** | Device page | How often the house breaks its learned routine. 0% = faithful replay; higher = more surprises. Default 15%. |
-| **Minimum time between changes** | Device page | Shortest time a device holds its new state before changing again; stops flicker. Default 20 min. |
+| **Routine variation** | Device page | How much the house varies its learned routine. Each device's learned likelihood is nudged up or down by up to this much before the schedule is replayed, so no two evenings are identical. 0% = faithful replay. Default 15%. |
+| **Minimum time between changes** | Device page | How long a device tends to hold its state — this is what makes lights stay on in realistic stretches rather than blinking. Also a hard floor on how soon a device can be switched again. Default 45 min. |
 | **Switch timing jitter** | Device page | Each change is nudged by a random delay up to this many minutes, so switches don't all happen on the clock tick. Default 7 min. |
 | **Max devices on at once** | Device page | Cap on how much of the house is lit at the same time, as a share of controlled devices. Default 85%. |
-| **Quiet hours start / end** | Device page | Overnight window kept mostly dark (the odd light may still come on). |
+| **Quiet hours start / end** | Device page | Overnight window. Everything is held off except devices your household genuinely leaves on at that time of week (a landing nightlight, say) — those simply stay on rather than being switched. |
+
+### How the simulation decides
+
+Every slot, each controlled device is handled like this:
+
+1. **Look up what your house normally does** at this time of week — a
+   probability learned from weeks of observation.
+2. **Nudge it** by up to *Routine variation*, so the replay is never identical.
+3. **Very low or very high probabilities are treated as certainties.** A device
+   you essentially never use at 3am stays off; one you essentially always leave
+   on stays on. Learned probabilities never quite reach 0 or 1, and replaying
+   those tails literally is what makes a simulation look random.
+4. **Otherwise, switch with hysteresis.** Rather than re-rolling the dice every
+   slot, the device is biased toward keeping its current state, so it produces
+   runs of roughly *Minimum time between changes* or longer. Over the week the
+   proportion of time it spends on still matches what was learned.
+5. **Inside quiet hours**, steps 2–4 are skipped: the device is off unless it's
+   one your household reliably leaves on overnight.
+
+Learning is paused while away mode is on, so the simulator never trains on its
+own output.
 
 ## Entities created
 

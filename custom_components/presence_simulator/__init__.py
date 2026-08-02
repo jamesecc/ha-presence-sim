@@ -177,6 +177,11 @@ def _schedule_payload(coordinator: PresenceCoordinator) -> dict:
     model = coordinator.model
     slot_minutes = model.slot_minutes
     sched = model.schedule(coordinator.controlled)
+    # Buckets with no observations of their own are silently filled from the
+    # household aggregate, which looks identical in the grids above. Name the
+    # entities that lean on it heavily so a thin row is recognisable as such.
+    missing = {eid: model.fallback_buckets(eid) for eid in coordinator.controlled}
+    fallback = {eid: n for eid, n in missing.items() if n * 2 > model.n_slots}
     return {
         "slot_minutes": slot_minutes,
         "entities": {
@@ -185,5 +190,6 @@ def _schedule_payload(coordinator: PresenceCoordinator) -> dict:
             if eid != "aggregate"
         },
         "aggregate": _grid(sched["aggregate"], slot_minutes),
+        "fallback_entities": fallback,
         "table": _render_tables(sched, slot_minutes),
     }
