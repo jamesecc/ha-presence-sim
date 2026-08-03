@@ -56,6 +56,14 @@ Re-opening **Configure** lands straight on the entities & learning page, which
 also describes what each tuning control does and links here for the full
 reference.
 
+**Try the controls before you commit to them:** the
+[interactive schedule preview](https://jamesecc.github.io/ha-presence-sim/docs/schedule-preview.html)
+replays a simulated week for a real learned schedule (seven lights, 15-minute
+slots, about a month of observation) using the same decision logic the
+integration runs. Every tuning control below is there as a slider, so you can
+see what raising *Routine variation* or shortening *Minimum time between
+changes* actually does to the lights before touching your own setup.
+
 ### What each control does
 
 | Control | Where | What it does |
