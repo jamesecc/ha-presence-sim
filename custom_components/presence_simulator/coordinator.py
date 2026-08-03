@@ -45,6 +45,7 @@ from .const import (
     DEFAULT_SLOT_MINUTES,
     EVENT_ACTION,
     HISTORY_MAXLEN,
+    QUIET_KEEP_ON_THRESHOLD,
     SAMPLE_MINUTES,
     SIGNAL_ACTION,
     SIGNAL_AWAY_STATE,
@@ -52,7 +53,13 @@ from .const import (
     STORAGE_KEY_FMT,
     STORAGE_VERSION,
 )
-from .model import ActivityModel, bucket_for, is_active
+from .model import (
+    ActivityModel,
+    apply_variation,
+    bucket_for,
+    is_active,
+    next_state,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -86,6 +93,9 @@ class PresenceCoordinator:
 
         # Per-entity bookkeeping for the simulation.
         self._desired: dict[str, bool] = {}
+        # State of each entity's on/off chain. Distinct from _desired: this is
+        # what the chain decided, which min-dwell may not have applied yet.
+        self._sim_on: dict[str, bool] = {}
         self._last_change: dict[str, datetime] = {}
         self._controlled_by_us: set[str] = set()
 
@@ -141,6 +151,16 @@ class PresenceCoordinator:
     @property
     def min_dwell(self) -> timedelta:
         return timedelta(minutes=int(self._opt(CONF_MIN_DWELL_MINUTES, DEFAULT_MIN_DWELL_MINUTES)))
+
+    @property
+    def persistence(self) -> float:
+        """Minimum mean run length, in slots, for the on/off chain.
+
+        Derived from the same "minimum time between changes" knob the user
+        already tunes, so the setting keeps its meaning while now actually
+        shaping how long a device holds its state.
+        """
+        return max(1.0, self.min_dwell.total_seconds() / 60.0 / self.slot_minutes)
 
     @property
     def jitter_minutes(self) -> int:
@@ -213,7 +233,17 @@ class PresenceCoordinator:
 
     @callback
     def _async_sample(self, now: datetime) -> None:
-        """Sample monitored entities and accumulate into the model."""
+        """Sample monitored entities and accumulate into the model.
+
+        Skipped entirely while away mode is on. Controlled entities are part of
+        ``monitored``, so sampling during simulation would train the model on
+        the simulator's own output — a feedback loop that erodes the learned
+        pattern every night the house is empty. Nothing observed in an empty
+        house is worth learning anyway, so ``last_sample`` deliberately stops
+        advancing until away mode is switched off.
+        """
+        if self.away_active:
+            return
         local = dt_util.as_local(now)
         bucket = bucket_for(local, self.slot_minutes)
         threshold = self.power_threshold
@@ -260,7 +290,25 @@ class PresenceCoordinator:
 
     async def _start_simulation(self) -> None:
         _LOGGER.info("Presence Simulator: away mode ON for %s", self.entry.title)
+        # Seed from what the house is actually doing right now, so the first
+        # step only commands the entities whose target differs. Starting from an
+        # empty dict made away-on fire an explicit turn_off at every controlled
+        # entity, including ones already off.
+        threshold = self.power_threshold
         self._desired = {}
+        self._sim_on = {}
+        for entity_id in self.controlled:
+            state = self.hass.states.get(entity_id)
+            on = bool(
+                is_active(
+                    state.state if state else None,
+                    state.attributes if state else None,
+                    threshold,
+                    unavailable_is_off=True,
+                )
+            )
+            self._desired[entity_id] = on
+            self._sim_on[entity_id] = on
         self._last_change = {}
         self._controlled_by_us = set()
         # Drive one step now, then on each slot boundary.
@@ -303,21 +351,29 @@ class PresenceCoordinator:
         self.last_step = local
         quiet = self._in_quiet_window(local)
         randomness = self.randomness
+        persistence = self.persistence
 
         controlled = self.controlled
         decisions: dict[str, bool] = {}
         for entity_id in controlled:
             p = self.model.entity_probability(entity_id, bucket)
             if quiet:
-                # Overnight: strongly bias toward off, but allow the rare light.
-                p *= 0.15
-            # Inject randomness: occasionally flip the natural inclination so
-            # the pattern isn't a deterministic replay of history.
-            roll = random.random()
-            want_on = roll < p
-            if random.random() < randomness:
-                want_on = not want_on
-            decisions[entity_id] = want_on
+                # Overnight the house is dark and still: everything is off
+                # except whatever this household genuinely leaves on at this
+                # time of week (a landing nightlight, say), which is simply
+                # held on rather than being switched — a sleeping house does
+                # not flick lights on and off. Tested against the raw learned
+                # value on purpose: jittering it first would drag a device that
+                # sits near the threshold back and forth across it every slot,
+                # which is the flicker we are removing.
+                decisions[entity_id] = p >= QUIET_KEEP_ON_THRESHOLD
+                continue
+            # Vary the probability, never the outcome, so the learned shape of
+            # the week survives.
+            p = apply_variation(p, randomness)
+            decisions[entity_id] = next_state(
+                self._sim_on.get(entity_id, False), p, persistence
+            )
 
         # Cap how many controlled entities are on at once for realism.
         max_on = max(1, int(round(len(controlled) * self.max_concurrent_fraction)))
@@ -326,6 +382,10 @@ class PresenceCoordinator:
             random.shuffle(on_list)
             for extra in on_list[max_on:]:
                 decisions[extra] = False
+
+        # The chain must track what was actually decided, including the quiet
+        # and max-concurrent overrides, or it drifts out of step with reality.
+        self._sim_on.update(decisions)
 
         # Apply with per-entity dwell time and randomised timing (jitter).
         for entity_id, want_on in decisions.items():

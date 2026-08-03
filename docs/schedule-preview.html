@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Presence Simulator — schedule preview</title>
+<style>
+/* Home Assistant default theme tokens (dark by default, light on request). */
+:root{
+  --bg:#111111; --card:#1c1c1c; --card-2:#282828; --divider:#2e2e2e;
+  --text:#e1e1e1; --text-2:#9b9b9b; --text-3:#6f6f6f;
+  --accent:#4a8fc7; --accent-dim:rgba(74,143,199,.28); --track:#5a5a5a;
+  --lit:#e0a244; --lit-soft:rgba(224,162,68,.26); --quiet:rgba(150,160,180,.075);
+  --shadow:0 2px 2px rgba(0,0,0,.28);
+}
+@media (prefers-color-scheme:light){
+  :root{
+    --bg:#f2f4f7; --card:#ffffff; --card-2:#f0f2f5; --divider:#e3e6ea;
+    --text:#212121; --text-2:#727272; --text-3:#9a9a9a;
+    --accent:#3d7fb5; --accent-dim:rgba(61,127,181,.22); --track:#c3c7cc;
+    --lit:#c07d18; --lit-soft:rgba(192,125,24,.20); --quiet:rgba(90,100,120,.09);
+    --shadow:0 2px 2px rgba(0,0,0,.06);
+  }
+}
+:root[data-theme="light"]{
+  --bg:#f2f4f7; --card:#ffffff; --card-2:#f0f2f5; --divider:#e3e6ea;
+  --text:#212121; --text-2:#727272; --text-3:#9a9a9a;
+  --accent:#3d7fb5; --accent-dim:rgba(61,127,181,.22); --track:#c3c7cc;
+  --lit:#c07d18; --lit-soft:rgba(192,125,24,.20); --quiet:rgba(90,100,120,.09);
+  --shadow:0 2px 2px rgba(0,0,0,.06);
+}
+:root[data-theme="dark"]{
+  --bg:#111111; --card:#1c1c1c; --card-2:#282828; --divider:#2e2e2e;
+  --text:#e1e1e1; --text-2:#9b9b9b; --text-3:#6f6f6f;
+  --accent:#4a8fc7; --accent-dim:rgba(74,143,199,.28); --track:#5a5a5a;
+  --lit:#e0a244; --lit-soft:rgba(224,162,68,.26); --quiet:rgba(150,160,180,.075);
+  --shadow:0 2px 2px rgba(0,0,0,.28);
+}
+
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:Roboto,"Helvetica Neue",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased;
+}
+.page{max-width:1280px;margin:0 auto;padding:20px 16px 56px}
+
+.masthead{margin:8px 0 20px}
+.masthead h1{font-size:1.5rem;font-weight:400;margin:0 0 6px;letter-spacing:.01em}
+.masthead p{margin:0;color:var(--text-2);max-width:74ch}
+.masthead code{background:var(--card-2);padding:1px 5px;border-radius:3px;font-size:.9em}
+
+.layout{display:grid;gap:16px;align-items:start}
+@media (min-width:1000px){ .layout{grid-template-columns:376px 1fr} .side{position:sticky;top:16px} }
+
+/* ---------- HA card ---------- */
+.card{background:var(--card);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
+.card > h2{
+  margin:0;padding:20px 20px 4px;font-size:1.5rem;font-weight:400;letter-spacing:.01em;
+}
+.card .body{padding:8px 20px 20px}
+
+/* toggle row */
+.toprow{display:flex;align-items:center;gap:16px;padding:14px 20px;
+  border-bottom:1px solid var(--divider)}
+.toprow .ic{flex:none;color:var(--accent)}
+.toprow .lbl{flex:1;min-width:0}
+.toprow .lbl b{display:block;font-weight:400;font-size:15px}
+.toprow .lbl span{display:block;color:var(--text-2);font-size:12px}
+.sw{position:relative;width:42px;height:24px;flex:none;cursor:pointer}
+.sw input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+.sw .bar{position:absolute;inset:4px 0;border-radius:10px;background:var(--track);
+  transition:background .18s}
+.sw .knob{position:absolute;top:1px;left:1px;width:22px;height:22px;border-radius:50%;
+  background:#fafafa;box-shadow:0 1px 3px rgba(0,0,0,.4);transition:transform .18s}
+.sw input:checked ~ .bar{background:var(--accent-dim)}
+.sw input:checked ~ .knob{transform:translateX(18px);background:var(--accent)}
+.sw input:focus-visible ~ .knob{outline:2px solid var(--accent);outline-offset:2px}
+
+/* control rows, mirroring the HA entities card */
+.row{display:flex;align-items:center;gap:16px;padding:10px 0;min-height:48px}
+.row + .row{border-top:1px solid transparent}
+.row .ic{flex:none;width:24px;height:24px;color:var(--accent)}
+.row .name{
+  flex:0 0 132px;min-width:0;font-size:14px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.row .ctl{flex:1;min-width:0;display:flex;align-items:center}
+.row .val{flex:none;min-width:58px;text-align:right;font-size:14px;
+  font-variant-numeric:tabular-nums;color:var(--text)}
+
+/* HA-style range slider */
+input[type=range]{
+  -webkit-appearance:none;appearance:none;width:100%;height:20px;
+  background:transparent;margin:0;cursor:pointer;
+}
+input[type=range]::-webkit-slider-runnable-track{
+  height:4px;border-radius:2px;
+  background:linear-gradient(to right,var(--accent) 0 var(--pct,50%),var(--track) var(--pct,50%) 100%);
+}
+input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--track)}
+input[type=range]::-moz-range-progress{height:4px;border-radius:2px;background:var(--accent)}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;
+  background:var(--accent);border:none;margin-top:-6px;
+  transition:box-shadow .15s;
+}
+input[type=range]::-moz-range-thumb{
+  width:16px;height:16px;border-radius:50%;background:var(--accent);border:none;
+}
+input[type=range]:hover::-webkit-slider-thumb{box-shadow:0 0 0 8px var(--accent-dim)}
+input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 10px var(--accent-dim)}
+
+/* HA-style time field */
+.timefield{display:flex;align-items:flex-end;gap:2px;background:var(--card-2);
+  border-radius:4px 4px 0 0;border-bottom:1px solid var(--text-3);padding:4px 8px 2px}
+.timefield .u{display:flex;flex-direction:column;align-items:center}
+.timefield .u small{font-size:10px;color:var(--text-2);line-height:1.4}
+.timefield input{
+  width:34px;border:none;background:transparent;color:var(--text);
+  font-family:inherit;font-size:17px;text-align:center;padding:0;
+  -moz-appearance:textfield;
+}
+.timefield input::-webkit-outer-spin-button,
+.timefield input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.timefield input:focus{outline:none}
+.timefield .sep{padding:0 2px 3px;color:var(--text-2);font-size:17px}
+
+.actions{display:flex;gap:8px;padding:4px 20px 20px;flex-wrap:wrap}
+button{
+  font-family:inherit;font-size:13px;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--accent);background:transparent;border:1px solid var(--divider);
+  border-radius:4px;padding:9px 15px;cursor:pointer;transition:background .15s;
+}
+button:hover{background:var(--card-2)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.note{padding:0 20px 18px;color:var(--text-2);font-size:12px;line-height:1.55}
+
+/* ---------- results ---------- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));
+  gap:1px;background:var(--divider);border-radius:12px;overflow:hidden;margin-bottom:16px}
+.stat{background:var(--card);padding:14px 16px}
+.stat .k{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-2);
+  margin:0 0 6px}
+.stat .v{font-size:1.55rem;font-weight:400;margin:0;font-variant-numeric:tabular-nums;
+  line-height:1.15}
+.stat .v.warn{color:var(--lit)}
+
+.day{background:var(--card);border-radius:12px;box-shadow:var(--shadow);
+  margin-bottom:12px;overflow:hidden}
+.day h3{margin:0;padding:11px 16px;font-size:12px;font-weight:500;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--text-2);border-bottom:1px solid var(--divider);
+  display:flex;justify-content:space-between;gap:10px}
+.day h3 em{font-style:normal;color:var(--text-3);letter-spacing:.02em;font-weight:400}
+.lane{display:grid;grid-template-columns:var(--gut) 1fr;gap:10px;align-items:center;
+  padding:0 16px;min-height:30px}
+.lane + .lane{border-top:1px solid var(--divider)}
+.lane .n{font-size:11.5px;color:var(--text-2);text-align:right;line-height:1.2;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.tr{position:relative;height:16px;background:var(--card-2);border-radius:3px;overflow:hidden}
+.tr .q{position:absolute;top:0;bottom:0;background:var(--quiet)}
+.tr .w{position:absolute;bottom:0;background:var(--lit-soft)}
+.tr .b{position:absolute;top:2px;bottom:2px;background:var(--lit);border-radius:2px}
+.ax{display:grid;grid-template-columns:var(--gut) 1fr;gap:10px;padding:6px 16px 9px;
+  border-top:1px solid var(--divider)}
+.ax .t{position:relative;height:13px;font-size:10px;color:var(--text-3);
+  font-variant-numeric:tabular-nums}
+.ax .t span{position:absolute;top:0}
+.legend{display:flex;gap:18px;flex-wrap:wrap;align-items:center;color:var(--text-2);
+  font-size:12px;margin:0 0 14px;padding:0 2px}
+.legend i{display:inline-block;width:20px;height:10px;border-radius:2px;
+  margin-right:7px;vertical-align:-1px}
+.legend .a{background:var(--lit)} .legend .b{background:var(--lit-soft)}
+.legend .c{background:var(--quiet);outline:1px solid var(--divider)}
+
+.off{background:var(--card);border-radius:12px;padding:36px 24px;text-align:center;
+  color:var(--text-2);box-shadow:var(--shadow)}
+.off b{display:block;color:var(--text);font-weight:400;font-size:1.1rem;margin-bottom:6px}
+
+footer{margin-top:26px;color:var(--text-3);font-size:12px;line-height:1.6;max-width:80ch}
+footer code{background:var(--card-2);padding:1px 5px;border-radius:3px}
+:root{--gut:112px}
+@media (max-width:560px){ :root{--gut:88px} .row .name{flex-basis:104px} }
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="masthead">
+  <h1>Presence Simulator &mdash; schedule preview</h1>
+  <p>A real week of away&nbsp;mode, replayed in your browser from a learned schedule captured by
+  <code>presence_simulator.export_schedule</code>. The controls are the same ones the integration
+  exposes on its device page; move them and the whole week re-simulates.</p>
+</div>
+
+<div class="layout">
+  <div class="side">
+    <div class="card">
+      <div class="toprow">
+        <svg class="ic" width="24" height="24" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true"
+             ><path d="M4 10.5 12 4l8 6.5V20h-5.5v-6h-5v6H4z"/></svg>
+        <span class="lbl"><b>Away simulation</b><span id="awaySub">Running</span></span>
+        <label class="sw" title="Away simulation">
+          <input type="checkbox" id="away" checked>
+          <span class="bar"></span><span class="knob"></span>
+        </label>
+      </div>
+
+      <h2>Configuration</h2>
+      <div class="body" id="controls"></div>
+
+      <div class="actions">
+        <button id="reroll" type="button">Re-roll randomness</button>
+        <button id="reset" type="button">Reset to defaults</button>
+      </div>
+      <p class="note">Every control re-runs the week against the <em>same</em> random stream, so a
+      change you see is caused by the control and not by luck. <b>Re-roll</b> draws a fresh stream
+      with the settings unchanged &mdash; the simulation is deliberately random, so no two weeks
+      match.</p>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="stats" id="stats"></div>
+    <p class="legend">
+      <span><i class="a"></i>Lit</span>
+      <span><i class="b"></i>Learned likelihood</span>
+      <span><i class="c"></i>Quiet hours</span>
+    </p>
+    <div id="week"></div>
+  </div>
+</div>
+
+<footer>
+  <p>The decision logic here is a faithful JavaScript port of
+  <code>model.next_state</code>, <code>model.apply_variation</code> and the per-slot step in
+  <code>coordinator._run_step</code> &mdash; deadband, quiet-hours rule, sticky on/off chain,
+  max-concurrent trim, minimum dwell and timing jitter, in that order. Because Python and
+  JavaScript have different random number generators the exact week differs from a real run, but
+  the behaviour and the statistics do not.</p>
+  <p>Schedule resolution is fixed at 15&nbsp;minutes here because that is the resolution the bundled
+  learned data was captured at; in Home Assistant it is set during configuration and changing it
+  starts a separate model.</p>
+</footer>
+</div>
+
+<script>
+const DATA = {"slot":15,"days":["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],"rows":[{"id":"light.landing_light","name":"Landing light","p":[81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,69,62,62,62,62,62,50,31,19,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,19,44,50,56,62,62,62,62,62,62,69,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,69,62,62,62,56,38,25,25,25,25,12,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,25,12,6,6,6,6,12,25,25,25,25,25,25,25,25,25,6,6,6,6,19,38,44,44,44,44,44,56,62,81,81,81,81,81,81,81,81,81,81,81,81,81,81,69,62,62,62,62,62,62,62,62,62,62,62,67,67,62,56,44,38,25,25,25,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,12,25,25,25,25,25,44,62,62,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,81,75,62,25,12,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,5,5,5,5,5,11,21,21,37,37,37,53,68,68,68,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,79,68,63,68,63,26,11,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,11,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,11,21,21,21,21,37,37,47,68,79,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,84,74,68,68,68,58,53,53,42,37,16,5,5,5,5,5,5,5,5,5,16,21,21,11,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,11,21,21,32,37,37,47,58,68,84,84,84,84,68,68,68,84,84,74,68,68,68,68,68,68,84,84,84,68,68,68,68,68,84,79,68,68,68,68,68,68,68,63,53,47,37,32,16,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,6,6,12,25,25,25,25,25,25,25,25,25,31,62,62,62,81,81,81,81]},{"id":"light.familyroom_lamp","name":"Family room lamp","p":[6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,19,25,19,6,6,19,69,81,75,75,75,56,62,25,25,25,19,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,31,75,81,81,75,62,62,44,44,25,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,7,7,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,19,25,25,25,38,44,44,44,31,25,25,25,25,12,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,16,21,11,11,21,32,53,79,84,74,63,53,32,21,16,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,21,32,26,21,32,42,53,53,63,74,74,84,58,26,21,21,21,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,11,21,32,37,37,42,53,68,68,84,68,53,42,37,37,21,21,21,21,11,5,5,5,5,5,5,5,5,5,5,5,21,21,21,21,5,5,5,5,11,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,19,50,62,62,62,81,81,81,81,81,69,31,19,6,6]},{"id":"light.livingroom_lamp","name":"Living room lamp","p":[6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,19,25,19,6,6,19,62,81,75,75,75,56,62,25,25,25,19,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,31,75,81,81,75,62,62,44,44,25,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,7,7,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,19,25,25,25,38,44,44,44,31,25,25,25,25,12,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,16,21,11,11,21,32,53,79,84,74,63,53,32,21,16,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,21,32,26,21,32,42,53,53,63,74,74,84,53,26,21,21,21,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,11,21,32,37,37,42,53,68,68,68,53,53,58,37,21,21,21,21,21,11,5,5,5,5,5,5,21,21,5,5,5,5,5,5,21,21,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,19,50,62,62,62,81,81,81,81,81,69,31,19,6,6]},{"id":"light.tv_backlight","name":"TV backlight","p":[6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,19,25,19,6,6,19,69,81,75,75,75,56,62,25,25,25,19,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,31,75,81,81,75,62,62,44,44,25,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,7,7,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,19,25,25,25,38,44,44,44,31,25,25,25,25,12,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,16,21,11,11,21,32,53,79,84,84,79,58,32,21,16,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,21,32,26,21,32,42,53,53,63,74,74,84,53,26,21,21,21,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,11,21,32,37,37,42,53,68,68,84,68,68,58,37,21,21,26,37,37,11,5,5,16,21,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,19,50,62,62,62,81,81,81,81,81,69,31,19,6,6]},{"id":"light.familyroom_light","name":"Family room light","p":[6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,12,19,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,25,25,25,25,25,25,19,6,6,6,6,6,6,6,6,6,6,6,6,6,12,25,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,7,7,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,19,19,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,19,25,25,21,11,21,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,11,21,21,21,21,11,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,16,37,26,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,21,21,21,21,21,21,21,21,21,21,21,21,21,21,16,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,21,21,21,21,21,21,21,16,5,5,5,5,5,5,5,21,21,21,5,5,5,5,5,5,5,5,21,21,5,5,21,16,5,5,5,5,5,5,16,21,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,16,21,21,21,21,21,21,25,25,25,25,19,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6]},{"id":"light.lifx_mini_kitchen","name":"Kitchen (LIFX mini)","p":[6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,19,25,25,25,12,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,25,25,25,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,25,19,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,19,12,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,7,7,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,25,25,25,25,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,19,25,25,25,25,19,6,5,5,5,11,21,21,21,11,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,16,21,21,21,21,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,21,21,21,21,5,5,21,16,5,5,5,5,5,5,16,21,5,5,21,16,5,5,5,5,21,21,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,16,21,21,21,21,21,21,19,6,6,6,6,25,25,19,6,6,6,6,6,6,6,6,6,6,6,6]},{"id":"light.sonoff_1000fcd222","name":"Sonoff 1000fcd222","p":[6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,12,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,12,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,25,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,25,12,12,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,7,7,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,19,31,25,12,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,19,25,25,25,25,25,16,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,16,21,11,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,21,21,5,5,5,5,11,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,11,21,21,11,5,5,5,5,21,11,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,12,6,6]}]};
+
+/* ---- constants, mirroring const.py ---- */
+const PROB_DEADBAND_LOW = 0.10;
+const PROB_DEADBAND_HIGH = 0.90;
+const QUIET_KEEP_ON_THRESHOLD = 0.60;
+const SLOT = DATA.slot, SPD = (24 * 60) / SLOT, WEEK = 7 * SPD, DAYMIN = 1440;
+
+/* ---- the two pure functions from model.py ---- */
+function applyVariation(p, variation, rng){
+  if (variation <= 0) return p;
+  return Math.min(1, Math.max(0, p * (1 + (rng() * 2 - 1) * variation)));
+}
+function nextState(currentlyOn, p, persistence, rng){
+  if (p <= PROB_DEADBAND_LOW) return false;
+  if (p >= PROB_DEADBAND_HIGH) return true;
+  const k = Math.max(1, persistence);
+  return currentlyOn ? rng() >= (1 - p) / k : rng() < p / k;
+}
+
+/* deterministic PRNG so a slider change is attributable to the slider */
+function mulberry32(a){
+  return function(){
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* ---- controls, matching NUMBER_TUNABLES / TIME_TUNABLES ---- */
+const ICON = {
+  shuffle:'M3 7h4l3.5 5M3 17h4l3.5-5M14 7h3.5M14 17h3.5M17 4l3.5 3L17 10M17 14l3.5 3L17 20',
+  timer:'M7 3h10M7 21h10M8 3v3.5L12 11l4-4.5V3M8 21v-3.5L12 13l4 4.5V21',
+  bulbs:'M8.5 12.8a4.2 4.2 0 1 1 4 0V15h-4v-2.2zM8.8 17.5h3.4M16.5 8.2a3.4 3.4 0 1 0-3.2-5.6',
+  clock:'M12 21a8 8 0 1 1 0-16 8 8 0 0 1 0 16zM12 8.5V13l3 1.8M9 2h6',
+  moon:'M20 14.5A8.2 8.2 0 0 1 9.5 4 8.3 8.3 0 1 0 20 14.5z',
+  sunrise:'M3 18h18M6.5 14a5.5 5.5 0 0 1 11 0M12 3v5M12 3 9.5 5.5M12 3l2.5 2.5M4 11l1.5 1.5M20 11l-1.5 1.5'
+};
+const NUMBERS = [
+  {key:'maxConc',  icon:'bulbs',   label:'Max devices on at once',    min:10, max:100, step:5, def:85, unit:'%'},
+  {key:'minDwell', icon:'timer',   label:'Minimum time between changes', min:0, max:120, step:5, def:45, unit:' min'},
+  {key:'variation',icon:'shuffle', label:'Routine variation',         min:0,  max:60,  step:5, def:15, unit:'%'},
+  {key:'jitter',   icon:'clock',   label:'Switch timing jitter',      min:0,  max:30,  step:1, def:7,  unit:' min'}
+];
+const TIMES = [
+  {key:'quietStart', icon:'moon',    label:'Quiet hours start', def:'00:30'},
+  {key:'quietEnd',   icon:'sunrise', label:'Quiet hours end',   def:'06:00'}
+];
+
+const cfg = {};
+NUMBERS.forEach(n => cfg[n.key] = n.def);
+TIMES.forEach(t => cfg[t.key] = t.def);
+let seed = 20260803;
+
+const svg = d => '<svg class="ic" width="24" height="24" viewBox="0 0 24 24" fill="none" '
+  + 'stroke="currentColor" stroke-width="1.7" stroke-linecap="round" '
+  + 'stroke-linejoin="round" aria-hidden="true"><path d="'+ICON[d]+'"/></svg>';
+
+document.getElementById('controls').innerHTML =
+  NUMBERS.map(n => `
+    <div class="row">
+      ${svg(n.icon)}
+      <label class="name" for="c-${n.key}" title="${n.label}">${n.label}</label>
+      <span class="ctl"><input type="range" id="c-${n.key}" min="${n.min}" max="${n.max}"
+        step="${n.step}" value="${n.def}" aria-label="${n.label}"></span>
+      <span class="val" id="v-${n.key}"></span>
+    </div>`).join('')
+  + TIMES.map(t => {
+      const [h, m] = t.def.split(':');
+      return `
+    <div class="row">
+      ${svg(t.icon)}
+      <span class="name" title="${t.label}">${t.label}</span>
+      <span class="ctl" style="justify-content:flex-end">
+        <span class="timefield">
+          <span class="u"><small>hh</small>
+            <input type="text" inputmode="numeric" id="h-${t.key}" maxlength="2"
+                   value="${+h}" aria-label="${t.label} hours"></span>
+          <span class="sep">:</span>
+          <span class="u"><small>mm</small>
+            <input type="text" inputmode="numeric" id="m-${t.key}" maxlength="2"
+                   value="${m}" aria-label="${t.label} minutes"></span>
+        </span>
+      </span>
+    </div>`;
+    }).join('');
+
+/* ---- simulation: one week, mirroring coordinator._run_step ---- */
+function toMin(hhmm){ const [h,m] = hhmm.split(':').map(Number); return h*60 + m; }
+
+function inQuiet(slot, startM, endM){
+  const minute = (slot % SPD) * SLOT;
+  if (startM === endM) return false;                 // zero-length window
+  if (startM < endM) return minute >= startM && minute < endM;
+  return minute >= startM || minute < endM;          // wraps past midnight
+}
+
+function simulate(){
+  const rng = mulberry32(seed);
+  const rows = DATA.rows, n = rows.length;
+  const persistence = Math.max(1, cfg.minDwell / SLOT);
+  const maxOn = Math.max(1, Math.round(n * cfg.maxConc / 100));
+  const qs = toMin(cfg.quietStart), qe = toMin(cfg.quietEnd);
+
+  const simOn = rows.map(() => false);
+  const desired = rows.map(() => false);
+  const lastChange = rows.map(() => null);
+  const events = rows.map(() => []);
+
+  for (let slot = 0; slot < WEEK; slot++){
+    const quiet = inQuiet(slot, qs, qe);
+    const decisions = new Array(n);
+    for (let i = 0; i < n; i++){
+      const p = rows[i].p[slot] / 100;
+      if (quiet){ decisions[i] = p >= QUIET_KEEP_ON_THRESHOLD; continue; }
+      decisions[i] = nextState(simOn[i], applyVariation(p, cfg.variation / 100, rng),
+                               persistence, rng);
+    }
+    const on = [];
+    for (let i = 0; i < n; i++) if (decisions[i]) on.push(i);
+    if (on.length > maxOn){
+      for (let i = on.length - 1; i > 0; i--){            // Fisher-Yates, as random.shuffle
+        const j = Math.floor(rng() * (i + 1));
+        [on[i], on[j]] = [on[j], on[i]];
+      }
+      for (let k = maxOn; k < on.length; k++) decisions[on[k]] = false;
+    }
+    for (let i = 0; i < n; i++) simOn[i] = decisions[i];
+
+    const slotStart = slot * SLOT;
+    for (let i = 0; i < n; i++){
+      if (desired[i] === decisions[i]) continue;
+      if (lastChange[i] !== null && slotStart - lastChange[i] < cfg.minDwell) continue;
+      desired[i] = decisions[i];
+      lastChange[i] = slotStart;
+      const maxDelay = Math.min(cfg.jitter, Math.max(1, SLOT - 1));
+      events[i].push([slotStart + rng() * maxDelay, decisions[i]]);
+    }
+  }
+
+  return events.map(evs => {
+    const spans = []; let open = null;
+    for (const [at, isOn] of evs){
+      if (isOn && open === null) open = at;
+      else if (!isOn && open !== null){ spans.push([open, at]); open = null; }
+    }
+    if (open !== null) spans.push([open, WEEK * SLOT]);
+    return { spans, switches: evs.length };
+  });
+}
+
+/* ---- render ---- */
+const fmtDur = m => {
+  const t = Math.round(m), h = Math.floor(t / 60), mm = t % 60;
+  return h ? (mm ? h + 'h ' + mm + 'm' : h + 'h') : mm + 'm';
+};
+
+function render(){
+  const on = document.getElementById('away').checked;
+  document.getElementById('awaySub').textContent = on ? 'Running' : 'Off';
+  const week = document.getElementById('week'), stats = document.getElementById('stats');
+
+  if (!on){
+    stats.innerHTML = '';
+    week.innerHTML = '<div class="off"><b>Away simulation is off</b>'
+      + 'The integration is only learning right now &mdash; nothing is being switched. '
+      + 'Turn it on to replay the learned schedule.</div>';
+    return;
+  }
+
+  const res = simulate();
+  const qs = toMin(cfg.quietStart), qe = toMin(cfg.quietEnd);
+  const runs = [], allSpans = res.map(r => r.spans);
+  let switches = 0, quietSwitches = 0, lit = 0;
+  res.forEach((r, i) => {
+    switches += r.switches;
+    r.spans.forEach(([a, b]) => { runs.push(b - a); lit += b - a; });
+    // count events landing inside the quiet window
+    r.spans.forEach(([a, b]) => [a, b].forEach(t => {
+      if (t >= WEEK * SLOT) return;
+      const mn = Math.floor(t) % DAYMIN;
+      const q = qs < qe ? (mn >= qs && mn < qe) : (qs === qe ? false : (mn >= qs || mn < qe));
+      if (q) quietSwitches++;
+    }));
+  });
+  runs.sort((a, b) => a - b);
+  const median = runs.length ? runs[Math.floor(runs.length / 2)] : 0;
+
+  stats.innerHTML = [
+    ['Switch events / week', switches, switches > 300],
+    ['During quiet hours', quietSwitches, quietSwitches > 20],
+    ['Typical run length', fmtDur(median), median < 30],
+    ['Avg light on-time', Math.round(lit / (7 * DAYMIN) / DATA.rows.length * 100) + '%', false]
+  ].map(([k, v, warn]) =>
+    `<div class="stat"><p class="k">${k}</p><p class="v${warn ? ' warn' : ''}">${v}</p></div>`
+  ).join('');
+
+  const HW = 100 / 24;
+  let html = '';
+  for (let d = 0; d < 7; d++){
+    const t0 = d * DAYMIN, t1 = t0 + DAYMIN;
+    let daySw = 0, dayLit = 0, lanes = '';
+    DATA.rows.forEach((row, i) => {
+      const inDay = allSpans[i]
+        .map(([a, b]) => [Math.max(a, t0), Math.min(b, t1)])
+        .filter(([a, b]) => b > a);
+      dayLit += inDay.reduce((s, [a, b]) => s + (b - a), 0);
+      allSpans[i].forEach(([a, b]) => {
+        if (a >= t0 && a < t1) daySw++;
+        if (b > t0 && b <= t1 && b < WEEK * SLOT) daySw++;
+      });
+      let wash = '';
+      for (let h = 0; h < 24; h++){
+        let p = 0;
+        const i0 = d * SPD + h * (60 / SLOT), cnt = 60 / SLOT;
+        for (let k = 0; k < cnt; k++) p += row.p[i0 + k] / 100;
+        p /= cnt;
+        if (p >= 0.13) wash += `<div class="w" style="left:${h*HW}%;width:${HW}%;height:${Math.round(p*100)}%"></div>`;
+      }
+      let q = '';
+      if (qs !== qe){
+        const segs = qs < qe ? [[qs, qe]] : [[0, qe], [qs, DAYMIN]];
+        segs.forEach(([a, b]) => { if (b > a)
+          q += `<div class="q" style="left:${a/DAYMIN*100}%;width:${(b-a)/DAYMIN*100}%"></div>`; });
+      }
+      const bars = inDay.map(([a, b]) =>
+        `<div class="b" style="left:${(a-t0)/DAYMIN*100}%;width:${Math.max((b-a)/DAYMIN*100,0.8)}%"></div>`
+      ).join('');
+      lanes += `<div class="lane"><div class="n">${row.name}</div>`
+             + `<div class="tr">${q}${wash}${bars}</div></div>`;
+    });
+    const ticks = [0, 6, 12, 18, 24].map((h, k) => {
+      const shift = k === 0 ? '0' : (k === 4 ? '-100%' : '-50%');
+      return `<span style="left:${h/24*100}%;transform:translateX(${shift})">`
+           + String(h).padStart(2, '0') + '</span>';
+    }).join('');
+    html += `<div class="day"><h3><span>${DATA.days[d]}</span>`
+          + `<em>${daySw} switches &middot; ${(dayLit/60).toFixed(1)} h lit</em></h3>`
+          + lanes
+          + `<div class="ax"><div></div><div class="t">${ticks}</div></div></div>`;
+  }
+  week.innerHTML = html;
+}
+
+/* ---- wiring ---- */
+function paint(input){
+  const pct = (input.value - input.min) / (input.max - input.min) * 100;
+  input.style.setProperty('--pct', pct + '%');
+}
+function syncNumbers(){
+  NUMBERS.forEach(n => {
+    const el = document.getElementById('c-' + n.key);
+    cfg[n.key] = +el.value;
+    document.getElementById('v-' + n.key).textContent = el.value + n.unit;
+    paint(el);
+  });
+}
+function syncTimes(){
+  TIMES.forEach(t => {
+    const h = document.getElementById('h-' + t.key), m = document.getElementById('m-' + t.key);
+    const hv = Math.min(23, Math.max(0, parseInt(h.value, 10) || 0));
+    const mv = Math.min(59, Math.max(0, parseInt(m.value, 10) || 0));
+    cfg[t.key] = String(hv).padStart(2, '0') + ':' + String(mv).padStart(2, '0');
+    // re-pad only when the field isn't being typed into, so editing stays natural
+    if (document.activeElement !== h) h.value = String(hv);
+    if (document.activeElement !== m) m.value = String(mv).padStart(2, '0');
+  });
+}
+function update(){ syncNumbers(); syncTimes(); render(); }
+
+document.getElementById('controls').addEventListener('input', update);
+document.getElementById('controls').addEventListener('change', update);
+document.getElementById('controls').addEventListener('focusout', update);
+document.getElementById('away').addEventListener('change', render);
+document.getElementById('reroll').addEventListener('click', () => {
+  seed = (Math.random() * 0xffffffff) >>> 0; render();
+});
+document.getElementById('reset').addEventListener('click', () => {
+  NUMBERS.forEach(n => document.getElementById('c-' + n.key).value = n.def);
+  TIMES.forEach(t => {
+    const [h, m] = t.def.split(':');
+    document.getElementById('h-' + t.key).value = +h;
+    document.getElementById('m-' + t.key).value = +m;
+  });
+  seed = 20260803;
+  update();
+});
+update();
+</script>
+</body>
+</html>
